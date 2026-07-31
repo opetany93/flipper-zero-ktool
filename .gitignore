@@ -5,3 +5,7 @@ dist/*
 .editorconfig
 .env
 .ufbt
+
+# OS
+Thumbs.db
+.DS_Store

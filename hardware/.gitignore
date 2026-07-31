@@ -1,0 +1,11 @@
+# KiCad — generated and local-only files
+.history/
+*-backups/
+*.kicad_prl
+*.kicad_sch-bak
+*.kicad_pcb-bak
+*.bak
+*.tmp
+fp-info-cache
+~*.*
+_autosave-*
