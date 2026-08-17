@@ -4,7 +4,7 @@ K-line / K-bus diagnostics on the Flipper Zero.
 
 The project has two halves:
 
-- **KTool** — the Flipper application (this repository's `.c` / `.h` files)
+- **KTool** — the Flipper application (Rust, in [`src/`](src/))
 - **Kextension** — the hardware it talks through: a Flipper Zero GPIO board built around two **ST L9637D** transceivers, plugged into the car through the OBD2 connector. Schematic and BOM live in [`hardware/`](hardware/).
 
 Originally developed against a **BMW E46 (330Ci, 2001)**, but K-line is not a BMW thing — the same physical layer (ISO 9141-2 / ISO 14230 KWP2000) was used by VW/Audi, Mercedes, PSA, Renault, Fiat, Opel and others until CAN took over. Hence no model name in the app.
@@ -75,31 +75,40 @@ OBD pin 16 -> F1 (PTC 650 mA / 60 V) -> D1 (1N5819) -+-> VS
 
 ### Supply voltage sensing
 
-A 150k / 10k divider off the VS rail feeds PC3. The app samples it every 500 ms with:
+A 150k / 10k divider off the VS rail feeds PC3. The app samples it every 500 ms with the `HIGH_IMPEDANCE_2V5` profile in [src/hal/adc.rs](src/hal/adc.rs):
 
-```c
-furi_hal_adc_configure_ex(adc, FuriHalAdcScale2500, FuriHalAdcClockSync64,
-                          FuriHalAdcOversample64, FuriHalAdcSamplingtime247_5);
+```rust
+scale:         FuriHalAdcScale2500,
+clock:         FuriHalAdcClockSync64,
+oversample:    FuriHalAdcOversample64,
+sampling_time: FuriHalAdcSamplingtime247_5,
 ```
 
 The long sampling time is **not optional**: the divider presents ~9.4 kΩ to the ADC, and a short sampling window leaves the sample-and-hold capacitor undercharged — producing a reading that is low but perfectly stable, and therefore easy to mistake for a correct one.
 
-Calibration constants in `ktool_i.h` were fitted against a multimeter at 10 / 14 / 16 V and land within **±7 mV** across that range. They are tied to the exact ADC configuration above — change `Scale`, `Oversample` or `Samplingtime` and the calibration must be redone.
+The four settings are exposed only as a whole named profile, never as independent knobs, because the calibration below is fitted against that exact combination.
+
+Calibration constants in [src/sensor/calibration.rs](src/sensor/calibration.rs) were fitted against a multimeter at 10 / 14 / 16 V and land within **±7 mV** across that range. They are tied to the ADC profile above — change `scale`, `oversample` or `sampling_time` and the calibration must be redone.
 
 ---
 
 ## Building
 
-Built with [ufbt](https://github.com/flipperdevices/flipperzero-ufbt):
+The app is written in Rust against [flipperzero-rs](https://github.com/flipperzero-rs/flipperzero). The toolchain channel and target are pinned in `rust-toolchain.toml`, so `rustup` installs the right ones on the first build.
 
 ```sh
-pipx install ufbt
-ufbt              # build -> dist/ktool.fap
-ufbt launch       # build, install to the SD card, run
-ufbt vscode_dist  # VS Code config (IntelliSense + tasks)
+cargo build --release   # -> target/thumbv7em-none-eabihf/release/ktool.fap
 ```
 
-`ufbt launch` installs the app permanently to `/ext/apps/Tools/ktool.fap`; it shows up under **Apps → Tools → KTool**.
+Nightly is required, but only for the `different-binary-name` cargo feature — that is what lets the binary be emitted as `ktool.fap` rather than a bare ELF.
+
+Copy the `.fap` to `/ext/apps/Tools/ktool.fap` on the SD card (qFlipper, or `ufbt` if you have it installed for other reasons); it shows up under **Apps → Tools → KTool**.
+
+The application icon is committed as `src/ktool.icon`, since there is no fbt in a Cargo build to convert the PNG. Regenerate it after editing `ktool.png`:
+
+```sh
+./tools/png-to-icon.ps1 -Source ktool.png -Destination src/ktool.icon
+```
 
 ### Required Flipper settings
 
@@ -157,11 +166,25 @@ OBD2 is a **connector** standard (SAE J1962), not a protocol one — the socket 
 ## Repository layout
 
 ```
-ktool.c, ktool_i.h    application sources
-application.fam       FAP manifest
-images/               icon assets
+src/main.rs           FAP manifest, entry point, composition root
+src/app.rs            event loop and the state shared with the GUI thread
+src/ui.rs             frame layout; pure drawing
+src/event.rs          the queue the event loop drains
+src/sensor/           physical quantities
+  mod.rs                SupplyReading and the SupplyVoltageSource trait
+  calibration.rs        the fitted correction, pure arithmetic
+  vs_divider.rs         the ADC-backed implementation
+src/hal/              safe RAII wrappers over the Furi C API
+  adc.rs, canvas.rs, input.rs, timer.rs, view_port.rs
+src/text.rs           heap-free formatting for the C drawing API
+src/units.rs          Millivolts
+tools/                icon conversion
 hardware/             Kextension: KiCad project, schematic PDF, BOM
 ```
+
+Dependencies point one way only — `app`/`ui` → `sensor` → `hal` — and `unsafe` appears nowhere outside `src/hal/`. The event loop depends on the `SupplyVoltageSource` trait rather than on the ADC, so the day supply voltage starts arriving over KWP2000 instead, only `main.rs` changes.
+
+Shutdown ordering is enforced rather than documented: the timer, the view port and the shared state are ordinary values whose `Drop` order the borrow checker fixes, so the timer provably stops before the queue it posts into goes away.
 
 ## License
 

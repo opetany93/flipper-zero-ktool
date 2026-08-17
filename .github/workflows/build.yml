@@ -1,41 +1,38 @@
-name: "FAP: Build for multiple SDK sources"
-# This will build your app for dev and release channels on GitHub. 
-# It will also build your app every day to make sure it's up to date with the latest SDK changes.
-# See https://github.com/marketplace/actions/build-flipper-application-package-fap for more information
+name: "FAP: Build"
+# Builds the application into dist/ktool.fap on every push and PR, and once a
+# day so that breakage from a new nightly or a new flipperzero-rs release shows
+# up before it is needed.
 
 on:
   push:
-    ## put your main branch name under "branches"
-    #branches: 
-    #  - master 
   pull_request:
-  schedule: 
+  schedule:
     # do a build every day
     - cron: "1 1 * * *"
 
 jobs:
-  ufbt-build:
+  build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - name: dev channel
-            sdk-channel: dev
-          - name: release channel
-            sdk-channel: release
-          # You can add unofficial channels here. See ufbt action docs for more info.
-    name: 'ufbt: Build for ${{ matrix.name }}'
+    name: "cargo: build ktool.fap"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Build with ufbt
-        uses: flipperdevices/flipperzero-ufbt-action@v0.1
-        id: build-app
-        with:
-          sdk-channel: ${{ matrix.sdk-channel }}
-      - name: Upload app artifacts
+
+      - name: Install toolchain
+        # Installs the channel and target pinned in rust-toolchain.toml.
+        run: rustup show
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --release -- --deny warnings
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
-          # See ufbt action docs for other output variables
-          name: ${{ github.event.repository.name }}-${{ steps.build-app.outputs.suffix }}
-          path: ${{ steps.build-app.outputs.fap-artifacts }}
+          name: ${{ github.event.repository.name }}
+          path: target/thumbv7em-none-eabihf/release/ktool.fap

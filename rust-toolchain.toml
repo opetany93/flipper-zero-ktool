@@ -1,0 +1,5 @@
+[toolchain]
+# Nightly is required by the `different-binary-name` cargo feature, which is
+# what lets the binary be emitted as `ktool.fap`.
+channel = "nightly-2025-08-31"
+targets = ["thumbv7em-none-eabihf"]

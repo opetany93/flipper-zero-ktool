@@ -1,10 +1,7 @@
-dist/*
+/target
 .vscode
-.clang-format
-.clangd
 .editorconfig
 .env
-.ufbt
 
 # OS
 Thumbs.db

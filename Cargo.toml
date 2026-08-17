@@ -1,0 +1,25 @@
+cargo-features = ["different-binary-name"]
+
+[package]
+name = "ktool"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85.0"
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+
+[[bin]]
+name = "ktool"
+filename = "ktool.fap"
+bench = false
+test = false
+
+[dependencies]
+flipperzero = "0.16.0"
+flipperzero-rt = "0.16.0"
+flipperzero-sys = "0.16.0"
+# Pulled in for its `#[global_allocator]`: `flipperzero` turns on its `alloc`
+# feature by default, and that expects a global allocator to exist.
+flipperzero-alloc = "0.16.0"
