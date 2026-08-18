@@ -3,3 +3,7 @@
 # what lets the binary be emitted as `ktool.fap`.
 channel = "nightly-2025-08-31"
 targets = ["thumbv7em-none-eabihf"]
+# Without this, VS Code uses the rust-analyzer bundled with the extension, which
+# is much newer than this toolchain and fails to expand macros - `write!` then
+# looks like an empty function body and reports errors that `cargo` does not.
+components = ["rust-analyzer"]
