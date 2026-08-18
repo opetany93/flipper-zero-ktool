@@ -5,15 +5,13 @@ use core::fmt::{self, Write};
 
 /// A fixed-capacity buffer that formats Rust values into a C string.
 ///
-/// `canvas_draw_str` wants a NUL-terminated pointer, and a draw callback has no
-/// business allocating one. `N` is the total capacity, terminator included.
+/// `N` is the total capacity, terminator included.
 pub struct TextBuffer<const N: usize> {
     bytes: [u8; N],
     len: usize,
 }
 
 impl<const N: usize> TextBuffer<N> {
-    /// Creates an empty buffer.
     pub const fn new() -> Self {
         Self {
             bytes: [0; N],
@@ -21,15 +19,10 @@ impl<const N: usize> TextBuffer<N> {
         }
     }
 
-    /// Formats `args`, replacing any previous content, and returns the result
-    /// ready to hand to C.
-    ///
-    /// Text that does not fit is truncated: a clipped label is a better outcome
-    /// on a 128x64 screen than a dropped frame.
+    /// Formats `args`, replacing any previous content. Text that does not fit is
+    /// truncated.
     pub fn format(&mut self, args: fmt::Arguments<'_>) -> &CStr {
         self.len = 0;
-        // The only way this fails is truncation, which is already the documented
-        // behaviour.
         let _ = self.write_fmt(args);
 
         if let Some(terminator) = self.bytes.get_mut(self.len) {
@@ -40,11 +33,17 @@ impl<const N: usize> TextBuffer<N> {
     }
 }
 
-impl<const N: usize> Default for TextBuffer<N> {
-    fn default() -> Self {
-        Self::new()
-    }
+/// Formats into a [`TextBuffer`] and yields the result as a `&CStr`.
+///
+/// A macro rather than a method because only a macro can build a
+/// `fmt::Arguments`, exactly as `write!` does for `write_fmt`.
+macro_rules! format_to_cstr {
+    ($buffer:expr, $($args:tt)*) => {
+        $buffer.format(format_args!($($args)*))
+    };
 }
+
+pub(crate) use format_to_cstr;
 
 impl<const N: usize> Write for TextBuffer<N> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
@@ -66,8 +65,7 @@ impl<const N: usize> Write for TextBuffer<N> {
         }
         self.len += fits;
 
-        // Reporting the overflow is what stops `write_fmt` from formatting the
-        // rest of the arguments into a buffer that cannot hold them.
+        // The `Err` is what stops `write_fmt` from formatting the rest.
         if fits == s.len() {
             Ok(())
         } else {

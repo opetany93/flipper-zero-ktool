@@ -6,7 +6,7 @@
 
 use crate::hal::canvas::{Canvas, Font};
 use crate::sensor::SupplyReading;
-use crate::text::TextBuffer;
+use crate::text::{TextBuffer, format_to_cstr};
 
 /// Left margin shared by every line.
 const MARGIN_X: i32 = 0;
@@ -33,16 +33,16 @@ pub fn draw(canvas: &mut Canvas<'_>, reading: &SupplyReading) {
     canvas.draw_str(
         MARGIN_X,
         VS_Y,
-        line.format(format_args!("VS   {} V", reading.vs)),
+        format_to_cstr!(line, "VS   {} V", reading.vs),
     );
     canvas.draw_str(
         MARGIN_X,
         B_PLUS_Y,
-        line.format(format_args!("B+   {} V", reading.b_plus)),
+        format_to_cstr!(line, "B+   {} V", reading.b_plus),
     );
     canvas.draw_str(
         MARGIN_X,
         RAW_Y,
-        line.format(format_args!("raw  {}", reading.adc_raw)),
+        format_to_cstr!(line, "raw  {}", reading.adc_raw),
     );
 }

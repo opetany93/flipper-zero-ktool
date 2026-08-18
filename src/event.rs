@@ -64,9 +64,3 @@ impl EventQueue {
         self.queue.get(FuriDuration::WAIT_FOREVER).ok()
     }
 }
-
-impl Default for EventQueue {
-    fn default() -> Self {
-        Self::new()
-    }
-}
