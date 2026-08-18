@@ -12,8 +12,8 @@ pub struct VsSenseCalibration {
     pub gain: f32,
     /// Fixed offset of the measuring path, in millivolts.
     pub offset_mv: f32,
-    /// Forward drop across D1 at this load, in millivolts.
-    pub d1_forward_drop_mv: f32,
+    /// Forward drop across D1 at this load.
+    pub d1_forward_drop: Millivolts,
 }
 
 impl VsSenseCalibration {
@@ -37,7 +37,7 @@ impl VsSenseCalibration {
     pub const MEASURED: Self = Self {
         gain: 16.085, // 16.0 nominal x 1.00531 measured
         offset_mv: 78.0,
-        d1_forward_drop_mv: 117.0,
+        d1_forward_drop: Millivolts(117),
     };
 
     /// Voltage at the VS node, from the voltage measured at the divider tap.
@@ -47,6 +47,6 @@ impl VsSenseCalibration {
 
     /// Voltage upstream of D1, reconstructed from the VS node.
     pub fn b_plus(&self, vs: Millivolts) -> Millivolts {
-        vs.saturating_add(Millivolts::from_mv_f32(self.d1_forward_drop_mv))
+        vs.saturating_add(self.d1_forward_drop)
     }
 }
