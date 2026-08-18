@@ -52,7 +52,18 @@ impl<const N: usize> Write for TextBuffer<N> {
         let room = N.saturating_sub(1 + self.len);
         let fits = room.min(s.len());
 
-        self.bytes[self.len..self.len + fits].copy_from_slice(&s.as_bytes()[..fits]);
+        // Copied by hand: `copy_from_slice` compiles to `memcpy`, which a FAP has
+        // no libc to supply, so `compiler_builtins` links its own in. Measured at
+        // 2.4 KB to move a dozen bytes.
+        for (slot, byte) in self
+            .bytes
+            .iter_mut()
+            .skip(self.len)
+            .take(fits)
+            .zip(s.as_bytes())
+        {
+            *slot = *byte;
+        }
         self.len += fits;
 
         // Reporting the overflow is what stops `write_fmt` from formatting the
