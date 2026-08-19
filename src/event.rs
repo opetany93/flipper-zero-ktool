@@ -8,28 +8,23 @@ use crate::hal::input::InputEvent;
 /// Everything that can wake the event loop.
 #[derive(Clone, Copy, Debug)]
 pub enum Event {
-    /// A key was pressed, held or released.
     Input(InputEvent),
-    /// The sampling timer fired.
     Tick,
 }
 
-/// Slots in the queue.
-///
-/// Comfortably more than the number of events ever in flight, which is what
-/// lets [`EventQueue::post`] be a blocking call without ever actually blocking.
+/// Comfortably more slots than events ever in flight, which is what lets
+/// [`EventQueue::post`] block without ever actually waiting.
 const CAPACITY: usize = 8;
 
-/// A typed mailbox for [`Event`]s, written by the GUI and timer threads and
-/// drained by the application thread.
+/// A typed mailbox: written by the GUI and timer threads, drained by the
+/// application thread.
 pub struct EventQueue {
     queue: MessageQueue<Event>,
 }
 
-// SAFETY: a Furi message queue is a multi-producer object by design - being
-// written from other threads is its entire purpose - and every method below
-// goes through `&self`. `MessageQueue` opts out of `Sync` only because it holds
-// a raw pointer, not because the underlying queue is thread-hostile.
+// SAFETY: a Furi message queue exists to be written from other threads, and
+// every method below goes through `&self`. `MessageQueue` is `!Sync` only
+// because it holds a raw pointer.
 unsafe impl Sync for EventQueue {}
 
 impl EventQueue {
@@ -39,27 +34,20 @@ impl EventQueue {
         }
     }
 
-    /// Posts an event, waiting for a slot if the queue is momentarily full.
-    ///
-    /// For the GUI thread, where input must not be lost. With [`CAPACITY`]
-    /// slots against a handful of in-flight events, the wait never actually
-    /// happens.
+    /// Posts an event, waiting for a slot. For the GUI thread, where input must
+    /// not be lost.
     pub fn post(&self, event: Event) {
         let _ = self.queue.put(event, FuriDuration::WAIT_FOREVER);
     }
 
-    /// Posts an event, dropping it if the queue is full.
-    ///
-    /// For the timer service thread, where blocking would stall every timer in
-    /// the system. A dropped tick costs one frame, which is a far better trade.
+    /// Posts an event, dropping it if the queue is full. For the timer service
+    /// thread, where blocking would stall every timer in the system.
     pub fn try_post(&self, event: Event) {
         let _ = self.queue.put(event, FuriDuration::ZERO);
     }
 
-    /// Blocks until the next event arrives.
-    ///
-    /// `None` means the queue itself failed, which ends the event loop rather
-    /// than spinning on it.
+    /// Blocks until the next event. `None` means the queue failed, which ends
+    /// the event loop.
     pub fn next(&self) -> Option<Event> {
         self.queue.get(FuriDuration::WAIT_FOREVER).ok()
     }
