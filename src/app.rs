@@ -8,69 +8,42 @@ use crate::event::{Event, EventQueue};
 use crate::hal::canvas::Canvas;
 use crate::hal::input::{InputEvent, Key, Press};
 use crate::hal::timer::PeriodicTimer;
-use crate::hal::view_port::{View, ViewPort};
+use crate::hal::view_port::ViewPort;
 use crate::sensor::{SupplyReading, SupplyVoltageSource};
 use crate::ui;
 
-/// How often the supply is sampled, and so how often the screen refreshes.
+/// Sampling period, and so the screen refresh rate.
 const SAMPLE_PERIOD_MS: u64 = 500;
-
-/// The state the application thread writes and the GUI thread reads.
-///
-/// The mutex covers the published reading and nothing else. Sampling happens
-/// outside it on purpose: an ADC conversion takes far too long to hold a lock
-/// the GUI thread needs in order to draw.
-struct Screen {
-    events: EventQueue,
-    reading: Mutex<SupplyReading>,
-}
-
-impl Screen {
-    fn new() -> Self {
-        Self {
-            events: EventQueue::new(),
-            reading: Mutex::new(SupplyReading::default()),
-        }
-    }
-
-    /// Makes a new reading visible to the next frame.
-    fn publish(&self, reading: SupplyReading) {
-        *self.reading.lock() = reading;
-    }
-}
-
-impl View for Screen {
-    fn draw(&self, canvas: &mut Canvas<'_>) {
-        // Snapshot and release. The lock is never held across drawing.
-        let reading = *self.reading.lock();
-
-        ui::draw(canvas, &reading);
-    }
-
-    fn on_input(&self, event: InputEvent) {
-        self.events.post(Event::Input(event));
-    }
-}
 
 /// Runs KTool until the user presses Back.
 pub fn run(supply: &mut impl SupplyVoltageSource) {
-    let screen = Screen::new();
+    // The only two things other threads reach into. Sampling stays outside the
+    // mutex: an ADC conversion is far too long to hold a lock the GUI thread
+    // needs in order to draw.
+    let events = EventQueue::new();
+    let reading = Mutex::new(SupplyReading::default());
 
-    // One reading before anything is on screen, so the first frame is not blank.
-    screen.publish(supply.read());
+    // So the first frame is not blank.
+    *reading.lock() = supply.read();
 
-    // Declaration order is shutdown order reversed, and that is the point: the
-    // timer stops first, then the view port detaches, and only then does
-    // `screen` - which both of them post into - go away. In the C version this
-    // was a comment that had to be obeyed by hand; here the borrow checker
-    // rejects any other ordering.
-    let view_port = ViewPort::fullscreen(&screen);
-    let on_tick = || screen.events.try_post(Event::Tick);
+    let on_draw = |canvas: &mut Canvas<'_>| {
+        // Snapshot and release: the lock is never held across drawing.
+        let snapshot = *reading.lock();
+
+        ui::draw(canvas, &snapshot);
+    };
+    let on_input = |event: InputEvent| events.post(Event::Input(event));
+    let on_tick = || events.try_post(Event::Tick);
+
+    // Declaration order is shutdown order reversed: the timer stops and the view
+    // port detaches before the closures they call, and before the queue and the
+    // mutex those captured. The borrow checker rejects any other ordering.
+    let view_port = ViewPort::fullscreen(&on_draw, &on_input);
     let mut timer = PeriodicTimer::new(&on_tick);
 
     timer.start(FuriDuration::from_millis(SAMPLE_PERIOD_MS));
 
-    while let Some(event) = screen.events.next() {
+    while let Some(event) = events.next() {
         match event {
             Event::Input(InputEvent {
                 key: Key::Back,
@@ -78,7 +51,7 @@ pub fn run(supply: &mut impl SupplyVoltageSource) {
             }) => break,
             Event::Input(_) => {}
             Event::Tick => {
-                screen.publish(supply.read());
+                *reading.lock() = supply.read();
                 view_port.request_redraw();
             }
         }
