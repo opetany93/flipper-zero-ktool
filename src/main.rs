@@ -31,6 +31,7 @@ use flipperzero::info;
 use flipperzero_rt::{entry, manifest};
 
 use crate::hal::adc::{Adc, AnalogInput, SamplingConfig};
+use crate::hal::serial::{self, Port, SerialPort};
 use crate::supply::calibration::VsSenseCalibration;
 use crate::supply::divider::VsDivider;
 
@@ -56,7 +57,16 @@ fn main(_args: Option<&CStr>) -> i32 {
 
     info!("started, ADC on PC3 (channel 4)");
 
-    app::run(&mut supply);
+    // K-line is on USART1 (header pins 13/14) at 10400 8N1, K-bus on LPUART1
+    // (15/16) at 9600 8E1.
+    //
+    // A busy port means a Flipper setting rather than a fault - the log device,
+    // or the Expansion Modules service - so the app carries on with the supply
+    // reading and says so on screen instead of refusing to start.
+    let kline_serial_port = SerialPort::open(Port::Usart, 10_400, serial::Framing::EIGHT_N1).ok();
+    let kbus_serial_port = SerialPort::open(Port::Lpuart, 9_600, serial::Framing::EIGHT_E1).ok();
+
+    app::run(&mut supply, kline_serial_port, kbus_serial_port);
 
     0
 }

@@ -7,6 +7,7 @@ use flipperzero::furi::time::FuriDuration;
 use crate::event::{Event, EventQueue};
 use crate::hal::canvas::Canvas;
 use crate::hal::input::{InputEvent, Key, Press};
+use crate::hal::serial::SerialPort;
 use crate::hal::timer::PeriodicTimer;
 use crate::hal::view_port::ViewPort;
 use crate::supply::{Reading, VoltageSource};
@@ -16,7 +17,14 @@ use crate::ui;
 const SAMPLE_PERIOD_MS: u64 = 500;
 
 /// Runs KTool until the user presses Back.
-pub fn run(supply: &mut impl VoltageSource) {
+///
+/// Takes the serial port by value, so it stays open for exactly as long as the
+/// app runs. `None` means it was busy.
+pub fn run(
+    supply: &mut impl VoltageSource,
+    kline_serial_port: Option<SerialPort>,
+    kbus_serial_port: Option<SerialPort>,
+) {
     // The only two things other threads reach into. Sampling stays outside the
     // mutex: an ADC conversion is far too long to hold a lock the GUI thread
     // needs in order to draw.
@@ -27,11 +35,17 @@ pub fn run(supply: &mut impl VoltageSource) {
     let sample = supply.read();
     *reading.lock() = sample;
 
+    // The screen wants the status, not the port. Reducing it to a `bool` here
+    // keeps the port out of the drawing closure, which has to be `Sync` - and a
+    // serial handle is not, nor could it honestly claim to be.
+    let kline_serial_opened = kline_serial_port.is_some();
+    let kbus_serial_opened = kbus_serial_port.is_some();
+
     let on_draw = |canvas: &mut Canvas<'_>| {
         // Snapshot and release: the lock is never held across drawing.
         let snapshot = *reading.lock();
 
-        ui::draw(canvas, &snapshot);
+        ui::draw(canvas, &snapshot, kline_serial_opened, kbus_serial_opened);
     };
     let on_input = |event: InputEvent| events_queue.post(Event::Input(event));
     let on_tick = || events_queue.try_post(Event::Tick);

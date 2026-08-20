@@ -7,5 +7,6 @@
 pub mod adc;
 pub mod canvas;
 pub mod input;
+pub mod serial;
 pub mod timer;
 pub mod view_port;
