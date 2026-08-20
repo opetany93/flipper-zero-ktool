@@ -11,12 +11,11 @@ pub struct AnalogInput {
 impl AnalogInput {
     /// Header pin 7 - PC3 - `ADC1_IN4`, where the VS-sense divider is tapped.
     ///
-    /// The pin has to be analog before the ADC can sample it, so that happens
-    /// here rather than being left as a separate step a caller can forget.
+    /// Switches the pin to analog mode, rather than leaving that as a separate
+    /// step a caller can forget.
     pub fn ext_pc3() -> Self {
-        // SAFETY: `gpio_ext_pc3` is a pin descriptor exported by the firmware
-        // and lives for the whole program; `furi_hal_gpio_init` only reads
-        // through the pointer.
+        // SAFETY: `gpio_ext_pc3` is a static pin descriptor exported by the
+        // firmware, and `furi_hal_gpio_init` only reads through the pointer.
         unsafe {
             sys::furi_hal_gpio_init(
                 &raw const sys::gpio_ext_pc3,
@@ -34,10 +33,9 @@ impl AnalogInput {
 
 /// How the ADC is clocked, oversampled and held.
 ///
-/// Exposed as whole named profiles rather than as four independent knobs. The
-/// VS-sense calibration is fitted against one specific combination of these
-/// values, and mixing settings that were never measured together is exactly the
-/// mistake worth making impossible.
+/// Whole named profiles rather than four independent knobs: the calibration is
+/// fitted against one specific combination, and mixing settings that were never
+/// measured together is the mistake worth making impossible.
 #[derive(Clone, Copy, Debug)]
 pub struct SamplingConfig {
     scale: sys::FuriHalAdcScale,
@@ -49,11 +47,10 @@ pub struct SamplingConfig {
 impl SamplingConfig {
     /// 2.5 V full scale, 64x oversampling, 247.5-cycle sample window.
     ///
-    /// The long sample window is not optional for a high-impedance source. The
-    /// VS tap looks like 150k in parallel with 10k - about 9.4k - to the ADC
-    /// input, and a short window leaves the sample-and-hold capacitor
-    /// undercharged. The result is a reading that is low but perfectly stable,
-    /// and therefore easy to mistake for a correct one.
+    /// The long window is not optional for a high-impedance source. The VS tap
+    /// looks like ~9.4k to the ADC input, and a short window leaves the
+    /// sample-and-hold capacitor undercharged: the reading comes out low but
+    /// perfectly stable, and therefore easy to mistake for a correct one.
     pub const HIGH_IMPEDANCE_2V5: Self = Self {
         scale: sys::FuriHalAdcScale2500,
         clock: sys::FuriHalAdcClockSync64,
@@ -65,17 +62,14 @@ impl SamplingConfig {
 /// The result of one conversion.
 #[derive(Clone, Copy, Debug)]
 pub struct Sample {
-    /// The raw 12-bit code. Worth keeping: it is the first thing to look at
-    /// when a converted voltage looks wrong.
+    /// The raw 12-bit code.
     pub raw: u16,
-    /// Voltage present at the pin, in millivolts, after the handle's own
-    /// factory calibration.
+    /// Voltage at the pin, after the handle's own factory calibration.
     pub pin_mv: f32,
 }
 
-/// An acquired ADC.
-///
-/// Releases the peripheral, along with its power and clock domains, on drop.
+/// An acquired ADC. Releases the peripheral, and its power and clock domains,
+/// on drop.
 pub struct Adc {
     handle: *mut sys::FuriHalAdcHandle,
 }
@@ -84,8 +78,7 @@ impl Adc {
     /// Acquires the ADC and brings it up with `config`.
     pub fn acquire(config: SamplingConfig) -> Self {
         // SAFETY: `furi_hal_adc_acquire` blocks until it can hand out a valid
-        // handle, and that handle is configured here, before any caller can
-        // read through it.
+        // handle, configured here before any caller can read through it.
         let handle = unsafe {
             let handle = sys::furi_hal_adc_acquire();
             sys::furi_hal_adc_configure_ex(
@@ -103,11 +96,11 @@ impl Adc {
 
     /// Runs one conversion on `input`.
     ///
-    /// Blocking, and slow by GUI standards: call it from the application
-    /// thread, never from a draw or input callback.
+    /// Blocking and slow by GUI standards: application thread only, never a
+    /// draw or input callback.
     pub fn read(&mut self, input: AnalogInput) -> Sample {
-        // SAFETY: `self.handle` is valid for as long as `self` is, and `&mut
-        // self` rules out a second conversion being in flight on it.
+        // SAFETY: `self.handle` is valid for as long as `self`, and `&mut self`
+        // rules out a second conversion in flight on it.
         unsafe {
             let raw = sys::furi_hal_adc_read(self.handle, input.channel);
 
