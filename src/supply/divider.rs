@@ -29,7 +29,7 @@ impl VoltageSource for VsDivider {
         Reading {
             adc_raw: sample.raw,
             vs,
-            b_plus: self.calibration.b_plus(vs),
+            b_plus: vs.map(|vs| self.calibration.b_plus(vs)),
         }
     }
 }

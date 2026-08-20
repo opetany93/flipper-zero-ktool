@@ -54,9 +54,22 @@ impl VsSenseCalibration {
         d1_forward_drop: Millivolts(193),
     };
 
+    /// Lowest voltage the fit was made against.
+    ///
+    /// Below it the affine model has no data behind it and degenerates into the
+    /// bare offset, which reads as a plausible small voltage rather than as the
+    /// absence of one. The same floor is used for B+, although the D1 constant
+    /// is only really trustworthy from 10 V up; hiding B+ between 4 and 10 V
+    /// would cost more than the ~14 mV it is off by there.
+    pub const VALID_FROM: Millivolts = Millivolts(4_000);
+
     /// Voltage at the VS node, from the voltage measured at the divider tap.
-    pub fn vs(&self, pin_mv: f32) -> Millivolts {
-        Millivolts::from_mv_f32(pin_mv * self.gain + self.offset_mv)
+    ///
+    /// `None` below [`VALID_FROM`](Self::VALID_FROM).
+    pub fn vs(&self, pin_mv: f32) -> Option<Millivolts> {
+        let vs = Millivolts::from_mv_f32(pin_mv * self.gain + self.offset_mv);
+
+        (vs >= Self::VALID_FROM).then_some(vs)
     }
 
     /// Voltage upstream of D1, reconstructed from the VS node.

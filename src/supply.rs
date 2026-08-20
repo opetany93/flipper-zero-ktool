@@ -14,10 +14,11 @@ pub struct Reading {
     /// Raw ADC code, on screen because it is the first thing to check when a
     /// voltage looks wrong.
     pub adc_raw: u16,
-    /// Voltage at the VS node, behind D1.
-    pub vs: Millivolts,
+    /// Voltage at the VS node, behind D1. `None` when the reading falls outside
+    /// the range the calibration was fitted in.
+    pub vs: Option<Millivolts>,
     /// Voltage upstream of D1: what the car is actually supplying.
-    pub b_plus: Millivolts,
+    pub b_plus: Option<Millivolts>,
 }
 
 /// A source of supply readings.
