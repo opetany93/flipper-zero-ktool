@@ -1,7 +1,6 @@
 //! The fitted correction from ADC pin voltage to vehicle voltages.
 //!
-//! Pure arithmetic, no hardware. This is the piece that gets re-measured when
-//! the divider, the diode or the ADC configuration changes.
+//! Pure arithmetic, no hardware.
 
 use crate::units::Millivolts;
 

@@ -88,7 +88,7 @@ The long sampling time is **not optional**: the divider presents ~9.4 kΩ to the
 
 The four settings are exposed only as a whole named profile, never as independent knobs, because the calibration below is fitted against that exact combination.
 
-Calibration constants in [src/sensor/calibration.rs](src/sensor/calibration.rs) were fitted against a multimeter at 10 / 14 / 16 V and land within **±7 mV** across that range. They are tied to the ADC profile above — change `scale`, `oversample` or `sampling_time` and the calibration must be redone.
+Calibration constants in [src/supply/calibration.rs](src/supply/calibration.rs) were fitted against a multimeter at 10 / 14 / 16 V and land within **±7 mV** across that range. They are tied to the ADC profile above — change `scale`, `oversample` or `sampling_time` and the calibration must be redone.
 
 ---
 
@@ -170,11 +170,11 @@ src/main.rs           FAP manifest, entry point, composition root
 src/app.rs            event loop and the state shared with the GUI thread
 src/ui.rs             frame layout; pure drawing
 src/event.rs          the queue the event loop drains
-src/sensor/           physical quantities
-  mod.rs                SupplyReading and the SupplyVoltageSource trait
+src/supply.rs         Reading and the VoltageSource trait
+src/supply/           measuring the vehicle supply voltage
   calibration.rs        the fitted correction, pure arithmetic
-  vs_divider.rs         the ADC-backed implementation
-src/hal/              safe RAII wrappers over the Furi C API
+  divider.rs            the ADC-backed implementation
+src/hal.rs, src/hal/  safe RAII wrappers over the Furi C API
   adc.rs, canvas.rs, input.rs, timer.rs, view_port.rs
 src/text.rs           heap-free formatting for the C drawing API
 src/units.rs          Millivolts
@@ -182,7 +182,7 @@ tools/                icon conversion
 hardware/             Kextension: KiCad project, schematic PDF, BOM
 ```
 
-Dependencies point one way only — `app`/`ui` → `sensor` → `hal` — and `unsafe` appears nowhere outside `src/hal/`. The event loop depends on the `SupplyVoltageSource` trait rather than on the ADC, so the day supply voltage starts arriving over KWP2000 instead, only `main.rs` changes.
+Dependencies point one way only — `app`/`ui` → `supply` → `hal` — and `unsafe` appears nowhere outside `src/hal/`. The event loop depends on the `VoltageSource` trait rather than on the ADC, so the day supply voltage starts arriving over KWP2000 instead, only `main.rs` changes.
 
 Shutdown ordering is enforced rather than documented: the timer, the view port and the shared state are ordinary values whose `Drop` order the borrow checker fixes, so the timer provably stops before the queue it posts into goes away.
 

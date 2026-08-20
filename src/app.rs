@@ -9,19 +9,19 @@ use crate::hal::canvas::Canvas;
 use crate::hal::input::{InputEvent, Key, Press};
 use crate::hal::timer::PeriodicTimer;
 use crate::hal::view_port::ViewPort;
-use crate::sensor::{SupplyReading, SupplyVoltageSource};
+use crate::supply::{Reading, VoltageSource};
 use crate::ui;
 
 /// Sampling period, and so the screen refresh rate.
 const SAMPLE_PERIOD_MS: u64 = 500;
 
 /// Runs KTool until the user presses Back.
-pub fn run(supply: &mut impl SupplyVoltageSource) {
+pub fn run(supply: &mut impl VoltageSource) {
     // The only two things other threads reach into. Sampling stays outside the
     // mutex: an ADC conversion is far too long to hold a lock the GUI thread
     // needs in order to draw.
     let events_queue = EventQueue::new();
-    let reading = Mutex::new(SupplyReading::default());
+    let reading = Mutex::new(Reading::default());
 
     // So the first frame is not blank.
     let sample = supply.read();

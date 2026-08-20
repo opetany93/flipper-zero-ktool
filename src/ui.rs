@@ -4,7 +4,7 @@
 //! second function here, not a change to the event loop.
 
 use crate::hal::canvas::{Canvas, Font};
-use crate::sensor::SupplyReading;
+use crate::supply::Reading;
 use crate::text::{TextBuffer, format_to_cstr};
 
 const MARGIN_X: i32 = 0;
@@ -18,7 +18,7 @@ const RAW_Y: i32 = 50;
 /// Enough for the longest line, `B+   12.34 V`, plus the NUL terminator.
 const LINE_CAPACITY: usize = 24;
 
-pub fn draw(canvas: &mut Canvas<'_>, reading: &SupplyReading) {
+pub fn draw(canvas: &mut Canvas<'_>, reading: &Reading) {
     let mut line = TextBuffer::<LINE_CAPACITY>::new();
 
     canvas.clear();

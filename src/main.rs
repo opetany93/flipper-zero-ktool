@@ -4,7 +4,7 @@
 //!
 //! - [`app`] - the event loop, and the state the GUI thread reads
 //! - [`ui`] - what a frame looks like; pure drawing, no state
-//! - [`sensor`] - physical quantities: sampling and calibration
+//! - [`supply`] - physical quantities: sampling and calibration
 //! - [`hal`] - safe, owning wrappers over the Furi C API
 //!
 //! Dependencies only ever point downwards, and `unsafe` appears only in
@@ -22,7 +22,7 @@ extern crate flipperzero_alloc;
 mod app;
 mod event;
 mod hal;
-mod sensor;
+mod supply;
 mod text;
 mod ui;
 mod units;
@@ -33,8 +33,8 @@ use flipperzero::info;
 use flipperzero_rt::{entry, manifest};
 
 use crate::hal::adc::{Adc, AnalogInput, SamplingConfig};
-use crate::sensor::calibration::VsSenseCalibration;
-use crate::sensor::vs_divider::VsDividerSensor;
+use crate::supply::calibration::VsSenseCalibration;
+use crate::supply::divider::VsDivider;
 
 manifest!(
     name = "KTool",
@@ -48,12 +48,12 @@ entry!(main);
 
 /// Composition root.
 ///
-/// The one place that knows which concrete sensor the app runs on. Everything
-/// below takes the [`SupplyVoltageSource`](sensor::SupplyVoltageSource)
-/// abstraction instead, so swapping the hardware means editing these few lines
-/// and nothing else.
+/// The one place that knows which concrete source the app runs on. Everything
+/// below takes the [`VoltageSource`](supply::VoltageSource) abstraction
+/// instead, so swapping the hardware means editing these few lines and nothing
+/// else.
 fn main(_args: Option<&CStr>) -> i32 {
-    let mut supply = VsDividerSensor::new(
+    let mut supply = VsDivider::new(
         Adc::acquire(SamplingConfig::HIGH_IMPEDANCE_2V5),
         AnalogInput::ext_pc3(),
         VsSenseCalibration::MEASURED,

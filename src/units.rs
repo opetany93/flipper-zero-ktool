@@ -1,4 +1,4 @@
-//! Physical units shared by the sensor and UI layers.
+//! Physical units shared by the supply and UI layers.
 
 use core::fmt;
 
