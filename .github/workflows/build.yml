@@ -1,7 +1,6 @@
 name: "FAP: Build"
-# Builds the application into dist/ktool.fap on every push and PR, and once a
-# day so that breakage from a new nightly or a new flipperzero-rs release shows
-# up before it is needed.
+# Builds ktool.fap on every push and PR, and once a day so that breakage from a
+# new nightly or a new flipperzero-rs release shows up before it is needed.
 
 on:
   push:
