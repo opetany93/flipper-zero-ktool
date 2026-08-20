@@ -16,7 +16,6 @@ const MARGIN_X: i32 = 0;
 const TITLE_Y: i32 = 10;
 const VS_Y: i32 = 26;
 const B_PLUS_Y: i32 = 38;
-const RAW_Y: i32 = 50;
 
 /// Enough for the longest line, `B+   12.34 V`, plus the NUL terminator.
 const LINE_CAPACITY: usize = 24;
@@ -51,10 +50,5 @@ pub fn draw(canvas: &mut Canvas<'_>, reading: &Reading) {
         MARGIN_X,
         B_PLUS_Y,
         format_to_cstr!(line, "B+   {}", Volts(reading.b_plus)),
-    );
-    canvas.draw_str(
-        MARGIN_X,
-        RAW_Y,
-        format_to_cstr!(line, "raw  {}", reading.adc_raw),
     );
 }

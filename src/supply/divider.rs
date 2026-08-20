@@ -23,11 +23,9 @@ impl VsDivider {
 
 impl VoltageSource for VsDivider {
     fn read(&mut self) -> Reading {
-        let sample = self.adc.read(self.input);
-        let vs = self.calibration.vs(sample.pin_mv);
+        let vs = self.calibration.vs(self.adc.read(self.input));
 
         Reading {
-            adc_raw: sample.raw,
             vs,
             b_plus: vs.map(|vs| self.calibration.b_plus(vs)),
         }

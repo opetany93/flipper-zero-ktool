@@ -59,15 +59,6 @@ impl SamplingConfig {
     };
 }
 
-/// The result of one conversion.
-#[derive(Clone, Copy, Debug)]
-pub struct Sample {
-    /// The raw 12-bit code.
-    pub raw: u16,
-    /// Voltage at the pin, after the handle's own factory calibration.
-    pub pin_mv: f32,
-}
-
 /// An acquired ADC. Releases the peripheral, and its power and clock domains,
 /// on drop.
 pub struct Adc {
@@ -94,20 +85,18 @@ impl Adc {
         Self { handle }
     }
 
-    /// Runs one conversion on `input`.
+    /// Runs one conversion on `input` and returns the voltage at the pin, in
+    /// millivolts, after the handle's own factory calibration.
     ///
     /// Blocking and slow by GUI standards: application thread only, never a
     /// draw or input callback.
-    pub fn read(&mut self, input: AnalogInput) -> Sample {
+    pub fn read(&mut self, input: AnalogInput) -> f32 {
         // SAFETY: `self.handle` is valid for as long as `self`, and `&mut self`
         // rules out a second conversion in flight on it.
         unsafe {
             let raw = sys::furi_hal_adc_read(self.handle, input.channel);
 
-            Sample {
-                raw,
-                pin_mv: sys::furi_hal_adc_convert_to_voltage(self.handle, raw),
-            }
+            sys::furi_hal_adc_convert_to_voltage(self.handle, raw)
         }
     }
 }

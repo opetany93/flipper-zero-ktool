@@ -11,9 +11,6 @@ use crate::units::Millivolts;
 /// costs is a property of the board.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Reading {
-    /// Raw ADC code, on screen because it is the first thing to check when a
-    /// voltage looks wrong.
-    pub adc_raw: u16,
     /// Voltage at the VS node, behind D1. `None` when the reading falls outside
     /// the range the calibration was fitted in.
     pub vs: Option<Millivolts>,
