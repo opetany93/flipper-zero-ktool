@@ -24,7 +24,8 @@ pub fn run(supply: &mut impl SupplyVoltageSource) {
     let reading = Mutex::new(SupplyReading::default());
 
     // So the first frame is not blank.
-    *reading.lock() = supply.read();
+    let sample = supply.read();
+    *reading.lock() = sample;
 
     let on_draw = |canvas: &mut Canvas<'_>| {
         // Snapshot and release: the lock is never held across drawing.
@@ -51,7 +52,9 @@ pub fn run(supply: &mut impl SupplyVoltageSource) {
             }) => break,
             Event::Input(_) => {}
             Event::Tick => {
-                *reading.lock() = supply.read();
+                let sample = supply.read();
+                *reading.lock() = sample;
+
                 view_port.request_redraw();
             }
         }
