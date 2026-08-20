@@ -5,7 +5,6 @@ use flipperzero::furi::time::FuriDuration;
 
 use crate::hal::input::InputEvent;
 
-/// Everything that can wake the event loop.
 #[derive(Clone, Copy, Debug)]
 pub enum Event {
     Input(InputEvent),

@@ -26,7 +26,6 @@ impl Millivolts {
 }
 
 impl fmt::Display for Millivolts {
-    /// Renders whole volts and hundredths, e.g. `13.82`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{:02}", self.0 / 1000, (self.0 % 1000) / 10)
     }

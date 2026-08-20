@@ -23,7 +23,6 @@ const K_BUS_SERIAL_PORT_STATUS_Y: i32 = 58;
 /// Enough for the longest line, `B+   12.34 V`, plus the NUL terminator.
 const LINE_CAPACITY: usize = 24;
 
-/// A voltage, or `--` where there is no valid reading to show.
 struct Volts(Option<Millivolts>);
 
 impl fmt::Display for Volts {

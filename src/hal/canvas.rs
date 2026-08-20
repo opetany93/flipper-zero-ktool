@@ -5,7 +5,6 @@ use core::marker::PhantomData;
 
 use flipperzero_sys as sys;
 
-/// The system fonts KTool draws with.
 #[derive(Clone, Copy, Debug)]
 pub enum Font {
     /// Bold.

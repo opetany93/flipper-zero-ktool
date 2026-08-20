@@ -13,7 +13,6 @@ pub enum Key {
     Back,
 }
 
-/// What happened to the key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Press {
     /// Pushed down.

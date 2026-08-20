@@ -5,8 +5,6 @@ pub mod divider;
 
 use crate::units::Millivolts;
 
-/// One reading of the vehicle supply.
-///
 /// Both voltages are computed here, not in the UI: where D1 sits and what it
 /// costs is a property of the board.
 #[derive(Clone, Copy, Default, Debug)]
@@ -18,8 +16,6 @@ pub struct Reading {
     pub b_plus: Option<Millivolts>,
 }
 
-/// A source of supply readings.
-///
 /// The event loop depends on this rather than on [`VsDivider`](divider::VsDivider),
 /// so the same figure can later arrive over KWP2000 without touching the loop.
 pub trait VoltageSource {

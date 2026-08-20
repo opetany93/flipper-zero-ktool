@@ -46,7 +46,6 @@ impl Framing {
     };
 }
 
-/// An open serial port.
 pub struct SerialPort {
     handle: SerialHandle,
 }

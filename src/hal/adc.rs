@@ -2,7 +2,6 @@
 
 use flipperzero_sys as sys;
 
-/// A header pin wired to an ADC channel, already switched to analog mode.
 #[derive(Clone, Copy, Debug)]
 pub struct AnalogInput {
     channel: sys::FuriHalAdcChannel,

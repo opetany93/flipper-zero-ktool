@@ -17,9 +17,6 @@ use crate::ui;
 const SAMPLE_PERIOD_MS: u64 = 500;
 
 /// Runs KTool until the user presses Back.
-///
-/// Takes the serial port by value, so it stays open for exactly as long as the
-/// app runs. `None` means it was busy.
 pub fn run(
     supply: &mut impl VoltageSource,
     kline_serial_port: Option<SerialPort>,
@@ -35,9 +32,6 @@ pub fn run(
     let sample = supply.read();
     *reading.lock() = sample;
 
-    // The screen wants the status, not the port. Reducing it to a `bool` here
-    // keeps the port out of the drawing closure, which has to be `Sync` - and a
-    // serial handle is not, nor could it honestly claim to be.
     let kline_serial_opened = kline_serial_port.is_some();
     let kbus_serial_opened = kbus_serial_port.is_some();
 
@@ -50,9 +44,8 @@ pub fn run(
     let on_input = |event: InputEvent| events_queue.post(Event::Input(event));
     let on_tick = || events_queue.try_post(Event::Tick);
 
-    // Declaration order is shutdown order reversed: the timer stops and the view
-    // port detaches before the closures they call, and before the queue and the
-    // mutex those captured. The borrow checker rejects any other ordering.
+    // Declaration order is shutdown order reversed, and the borrow checker
+    // enforces it.
     let view_port = ViewPort::fullscreen(&on_draw, &on_input);
     let mut timer = PeriodicTimer::new(&on_tick);
 
