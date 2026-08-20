@@ -19,7 +19,7 @@ Originally developed against a **BMW E46 (330Ci, 2001)**, but K-line is not a BM
 |---|---|
 | App skeleton (GUI, event loop, timer) | ✅ working |
 | VS-sense (supply voltage over ADC) | ✅ working, calibrated to ±10 mV — the ADC quantisation floor |
-| Dual UART transport (K-line + K-bus) | ⬜ not started — no code yet. Approach validated on paper: both ports are exposed by `flipperzero::serial`, so no multiplexing hardware is needed |
+| Dual UART transport (K-line + K-bus) | 🟨 both ports open on the device — USART1 at 10400 8N1, LPUART1 at 9600 8E1 — and their status shows on screen. Nothing is transmitted or received yet |
 | Schematic | ✅ complete (KiCad) |
 | Hardware assembly | 🟨 assembled on a protoboard, not yet tested |
 | KWP2000 / DS2 diagnostics | ⬜ not started |
@@ -157,13 +157,14 @@ OBD2 is a **connector** standard (SAE J1962), not a protocol one — the socket 
 
 ## Roadmap
 
-1. Runtime check that `SerialHandle::acquire()` succeeds for the LPUART
-2. Bench-test the assembled board: supply rails, VS-sense divider, transceiver idle levels
-3. Confirm whether a live K-bus is present on OBD2 pin 8 on the target car
-4. KWP2000 transport layer, then fault codes
-5. K-bus sniffer (receive only) before any transmission
-6. Comfort close
-7. CAN — deferred; needs either bxCAN plus an SN65HVD230, or an MCP2515 module (avoid TJA1050 variants, they are 5 V only)
+1. Loopback through the transceiver: send `0x55` on K-line and check it comes back. On a half-duplex bus the echo is the test, so no car and no PC adapter are needed — only 12 V on the board, since the K line is pulled up from VS
+2. Hex dump screen, fed by `AsyncSerialReceiver`
+3. Bench-test the assembled board: supply rails, VS-sense divider, transceiver idle levels
+4. Confirm whether a live K-bus is present on OBD2 pin 8 on the target car
+5. KWP2000 transport layer, then fault codes
+6. K-bus sniffer (receive only) before any transmission
+7. Comfort close
+8. CAN — deferred; needs either bxCAN plus an SN65HVD230, or an MCP2515 module (avoid TJA1050 variants, they are 5 V only)
 
 ---
 
