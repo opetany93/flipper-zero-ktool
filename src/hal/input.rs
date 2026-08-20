@@ -3,7 +3,6 @@
 
 use flipperzero_sys as sys;
 
-/// A key on the Flipper's pad.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
     Up,
@@ -17,9 +16,9 @@ pub enum Key {
 /// What happened to the key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Press {
-    /// Physically pushed down.
+    /// Pushed down.
     Down,
-    /// Physically released.
+    /// Released.
     Up,
     /// Pushed and released inside the short-press window.
     Short,
@@ -29,7 +28,6 @@ pub enum Press {
     Repeat,
 }
 
-/// One key event.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InputEvent {
     pub key: Key,
@@ -37,11 +35,9 @@ pub struct InputEvent {
 }
 
 impl InputEvent {
-    /// Translates an event delivered by the GUI service.
-    ///
-    /// Returns `None` for keys or gestures the firmware knows about but this
-    /// wrapper does not, so an unexpected variant is ignored rather than
-    /// quietly mapped onto the wrong one.
+    /// `None` for keys and gestures the firmware knows about but this wrapper
+    /// does not, so an unexpected variant is ignored rather than quietly mapped
+    /// onto the wrong one.
     pub(crate) fn from_sys(event: &sys::InputEvent) -> Option<Self> {
         Some(Self {
             key: key_from_sys(event.key)?,
