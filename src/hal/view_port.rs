@@ -12,9 +12,8 @@ use super::input::InputEvent;
 /// A fullscreen view port, registered with the GUI service for as long as it
 /// lives.
 ///
-/// It holds the borrows of both callbacks on purpose: dropping the view port
-/// detaches them from the GUI service, and the borrow is what guarantees that
-/// happens before anything they captured can go away.
+/// Holding the callbacks' borrows is what guarantees they are detached before
+/// anything they captured can go away.
 pub struct ViewPort<'a> {
     // Declared first so that it is dropped last: `Drop::drop` below still needs
     // the GUI record open.
@@ -26,8 +25,8 @@ pub struct ViewPort<'a> {
 impl<'a> ViewPort<'a> {
     /// Allocates a fullscreen view port and shows it.
     ///
-    /// Both callbacks run on the GUI service thread, which is why they must be
-    /// `Sync`, and neither may block: the service is waiting on them.
+    /// Both callbacks run on the GUI service thread, hence `Sync`, and neither
+    /// may block: the service is waiting on them.
     pub fn fullscreen<D, I>(on_draw: &'a D, on_input: &'a I) -> Self
     where
         D: Fn(&mut Canvas<'_>) + Sync,
@@ -37,10 +36,9 @@ impl<'a> ViewPort<'a> {
             canvas: *mut sys::Canvas,
             context: *mut c_void,
         ) {
-            // SAFETY: `context` is the `&D` registered below, which the
-            // `ViewPort` keeps borrowed for as long as the callbacks are
-            // attached. `canvas` is valid for the duration of this call, which
-            // is exactly the lifetime the wrapper is given.
+            // SAFETY: `context` is the `&D` registered below, kept borrowed for
+            // as long as the callbacks are attached. `canvas` is valid only for
+            // this call, which is exactly the lifetime the wrapper gets.
             let on_draw: &D = unsafe { &*context.cast() };
             let mut canvas = unsafe { Canvas::from_raw(canvas) };
 
@@ -51,8 +49,7 @@ impl<'a> ViewPort<'a> {
             event: *mut sys::InputEvent,
             context: *mut c_void,
         ) {
-            // SAFETY: as above; `event` points at a live event for the duration
-            // of the call.
+            // SAFETY: as above; `event` points at a live event for this call.
             let on_input: &I = unsafe { &*context.cast() };
             let event = unsafe { &*event };
 
@@ -91,7 +88,7 @@ impl<'a> ViewPort<'a> {
         }
     }
 
-    /// Asks the GUI service to redraw the view.
+    /// Asks the GUI service to redraw the view. Returns before it happens.
     pub fn request_redraw(&self) {
         // SAFETY: `self.raw` is valid for the lifetime of `self`.
         unsafe { sys::view_port_update(self.raw) };
@@ -100,8 +97,7 @@ impl<'a> ViewPort<'a> {
 
 impl Drop for ViewPort<'_> {
     fn drop(&mut self) {
-        // Disable first - that is what stops further callbacks. Only then is it
-        // safe to detach and free.
+        // Disable first - that is what stops further callbacks.
         //
         // SAFETY: `self.raw` came from `view_port_alloc` and is freed exactly
         // once, while `self.gui` is still open.
