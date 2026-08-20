@@ -20,7 +20,7 @@ pub fn run(supply: &mut impl SupplyVoltageSource) {
     // The only two things other threads reach into. Sampling stays outside the
     // mutex: an ADC conversion is far too long to hold a lock the GUI thread
     // needs in order to draw.
-    let events = EventQueue::new();
+    let events_queue = EventQueue::new();
     let reading = Mutex::new(SupplyReading::default());
 
     // So the first frame is not blank.
@@ -32,8 +32,8 @@ pub fn run(supply: &mut impl SupplyVoltageSource) {
 
         ui::draw(canvas, &snapshot);
     };
-    let on_input = |event: InputEvent| events.post(Event::Input(event));
-    let on_tick = || events.try_post(Event::Tick);
+    let on_input = |event: InputEvent| events_queue.post(Event::Input(event));
+    let on_tick = || events_queue.try_post(Event::Tick);
 
     // Declaration order is shutdown order reversed: the timer stops and the view
     // port detaches before the closures they call, and before the queue and the
@@ -43,7 +43,7 @@ pub fn run(supply: &mut impl SupplyVoltageSource) {
 
     timer.start(FuriDuration::from_millis(SAMPLE_PERIOD_MS));
 
-    while let Some(event) = events.next() {
+    while let Some(event) = events_queue.next() {
         match event {
             Event::Input(InputEvent {
                 key: Key::Back,
