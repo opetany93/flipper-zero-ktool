@@ -19,7 +19,7 @@ Originally developed against a **BMW E46 (330Ci, 2001)**, but K-line is not a BM
 |---|---|
 | App skeleton (GUI, event loop, timer) | ✅ working |
 | VS-sense (supply voltage over ADC) | ✅ working, calibrated to ±7 mV |
-| Dual UART transport (K-line + K-bus) | ⬜ not started — no code yet. Approach validated on paper: both ports are exposed by `furi_hal_serial`, so no multiplexing hardware is needed |
+| Dual UART transport (K-line + K-bus) | ⬜ not started — no code yet. Approach validated on paper: both ports are exposed by `flipperzero::serial`, so no multiplexing hardware is needed |
 | Schematic | ✅ complete (KiCad) |
 | Hardware assembly | 🟨 assembled on a protoboard, not yet tested |
 | KWP2000 / DS2 diagnostics | ⬜ not started |
@@ -118,9 +118,9 @@ These reset to their defaults after a firmware reinstall, so check them before c
 |---|---|---|
 | System → **Log Device** | `None` | The default is USART — pins 13/14 — which would spray log text straight into the K-line |
 | System → **Log Level** | `Info` | Often defaults to `none`, in which case `log` in the CLI stays silent |
-| **Expansion Modules** → Listen UART | disabled | The service occupies whichever UART it listens on, and `furi_hal_serial_control_acquire()` then returns NULL |
+| **Expansion Modules** → Listen UART | disabled | The service occupies whichever UART it listens on, and `SerialHandle::acquire()` then fails with `ResourceBusy` |
 
-Logs are read over USB, which keeps both UARTs free:
+Both UARTs are taken by the transceivers, so logs have to go over USB:
 
 ```sh
 ufbt cli
@@ -153,7 +153,7 @@ OBD2 is a **connector** standard (SAE J1962), not a protocol one — the socket 
 
 ## Roadmap
 
-1. Runtime check that `furi_hal_serial_control_acquire(FuriHalSerialIdLpuart)` succeeds
+1. Runtime check that `SerialHandle::acquire()` succeeds for the LPUART
 2. Bench-test the assembled board: supply rails, VS-sense divider, transceiver idle levels
 3. Confirm whether a live K-bus is present on OBD2 pin 8 on the target car
 4. KWP2000 transport layer, then fault codes
