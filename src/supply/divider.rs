@@ -12,9 +12,6 @@ pub struct VsDivider {
 }
 
 impl VsDivider {
-    /// Assembles a source from the three things it needs: a configured ADC, the
-    /// pin the divider is tapped on, and the fit that turns volts at that pin
-    /// into volts in the car.
     pub fn new(adc: Adc, input: AnalogInput, calibration: VsSenseCalibration) -> Self {
         Self {
             adc,

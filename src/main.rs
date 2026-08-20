@@ -1,15 +1,13 @@
 //! KTool - K-line / K-bus diagnostics for the Flipper Zero.
 //!
-//! The crate is layered, outermost first:
+//! Layered, outermost first:
 //!
 //! - [`app`] - the event loop, and the state the GUI thread reads
 //! - [`ui`] - what a frame looks like; pure drawing, no state
 //! - [`supply`] - physical quantities: sampling and calibration
 //! - [`hal`] - safe, owning wrappers over the Furi C API
 //!
-//! Dependencies only ever point downwards, and `unsafe` appears only in
-//! [`hal`]. Everything above it deals in ordinary Rust types whose lifetimes
-//! the compiler checks.
+//! Dependencies point downwards only, and `unsafe` appears only in [`hal`].
 
 #![no_main]
 #![no_std]
@@ -46,12 +44,9 @@ manifest!(
 
 entry!(main);
 
-/// Composition root.
-///
-/// The one place that knows which concrete source the app runs on. Everything
-/// below takes the [`VoltageSource`](supply::VoltageSource) abstraction
-/// instead, so swapping the hardware means editing these few lines and nothing
-/// else.
+/// Composition root: the one place that knows which concrete source the app
+/// runs on. Everything below takes the [`VoltageSource`](supply::VoltageSource)
+/// abstraction instead.
 fn main(_args: Option<&CStr>) -> i32 {
     let mut supply = VsDivider::new(
         Adc::acquire(SamplingConfig::HIGH_IMPEDANCE_2V5),
