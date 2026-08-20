@@ -9,7 +9,7 @@ The project has two halves:
 
 Originally developed against a **BMW E46 (330Ci, 2001)**, but K-line is not a BMW thing — the same physical layer (ISO 9141-2 / ISO 14230 KWP2000) was used by VW/Audi, Mercedes, PSA, Renault, Fiat, Opel and others until CAN took over. Hence no model name in the app.
 
-> ⚠️ **Early work in progress.** The app currently brings up the GUI and reads the supply voltage. Diagnostics, live data and K-bus support are not implemented yet. The hardware side is designed and verified on the bench, but not yet assembled on a protoboard.
+> ⚠️ **Early work in progress.** The app currently brings up the GUI and reads the supply voltage. Diagnostics, live data and K-bus support are not implemented yet. The hardware is assembled on a protoboard but not yet tested against a car.
 
 ---
 
@@ -21,7 +21,7 @@ Originally developed against a **BMW E46 (330Ci, 2001)**, but K-line is not a BM
 | VS-sense (supply voltage over ADC) | ✅ working, calibrated to ±7 mV |
 | Dual UART transport (K-line + K-bus) | ⬜ not started — no code yet. Approach validated on paper: both ports are exposed by `furi_hal_serial`, so no multiplexing hardware is needed |
 | Schematic | ✅ complete (KiCad) |
-| Hardware assembly | ⬜ not started |
+| Hardware assembly | 🟨 assembled on a protoboard, not yet tested |
 | KWP2000 / DS2 diagnostics | ⬜ not started |
 | K-bus sniffing | ⬜ not started |
 
@@ -154,7 +154,7 @@ OBD2 is a **connector** standard (SAE J1962), not a protocol one — the socket 
 ## Roadmap
 
 1. Runtime check that `furi_hal_serial_control_acquire(FuriHalSerialIdLpuart)` succeeds
-2. Assemble on a Flipper Zero ProtoBoard v1.1
+2. Bench-test the assembled board: supply rails, VS-sense divider, transceiver idle levels
 3. Confirm whether a live K-bus is present on OBD2 pin 8 on the target car
 4. KWP2000 transport layer, then fault codes
 5. K-bus sniffer (receive only) before any transmission
@@ -188,4 +188,4 @@ Shutdown ordering is enforced rather than documented: the timer, the view port a
 
 ## License
 
-TBD.
+GNU General Public License v3.0. See [`LICENSE`](LICENSE).
