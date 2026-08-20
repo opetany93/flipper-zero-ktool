@@ -38,9 +38,11 @@ impl VsSenseCalibration {
     /// millivolts: `pin_mv / raw` came out at 0.6102, implying 16.153 against
     /// the fitted 16.142. That is 11 mV at 16 V, the same size as the
     /// uncertainty of the check itself, so the seven-point fit was kept over
-    /// the two-point one. There is nothing left to trim without a finer ADC
-    /// step - 16 V only reaches 990 mV of the 2500 mV scale, so a divider that
-    /// used more of the range would help far more than any refit.
+    /// the two-point one. Nothing is left to trim without a finer ADC step, and
+    /// that is a hardware question: 16 V reaches only 990 mV of the 2500 mV
+    /// scale, but the 16:1 ratio is set by load-dump survival, not resolution -
+    /// D2 clamps at ~41 V, which lands at 2.56 V on a 3.3 V pin. A steeper
+    /// divider would need a clamp diode at the pin to go with it.
     ///
     /// These numbers are tied to
     /// [`SamplingConfig::HIGH_IMPEDANCE_2V5`](crate::hal::adc::SamplingConfig::HIGH_IMPEDANCE_2V5).

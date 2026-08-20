@@ -90,7 +90,7 @@ The four settings are exposed only as a whole named profile, never as independen
 
 Calibration constants in [src/supply/calibration.rs](src/supply/calibration.rs) were fitted on the assembled board at seven points from 4 to 16 V. Fit residuals are within ±5 mV, but against a fresh multimeter reading expect **±10 mV** — one ADC count is 9.86 mV at the VS node, so quantisation dominates. B+ carries a few mV more, and reads low below 10 V, because the drop across D1 follows current rather than being constant.
 
-Going finer is a hardware question, not a calibration one: 16 V only reaches 990 mV of the 2500 mV ADC scale, so a divider using more of the range would buy more than any refit.
+Going finer is a hardware question, not a calibration one. 16 V reaches only 990 mV of the 2500 mV ADC scale, but the 16:1 ratio is set by load-dump survival rather than resolution — D2 clamps at ~41 V, which lands at 2.56 V on a 3.3 V pin. A steeper divider would need a clamp diode at the pin to go with it.
 
 The constants are tied to the ADC profile above — change `scale`, `oversample` or `sampling_time` and the calibration must be redone.
 
