@@ -18,7 +18,7 @@ Originally developed against a **BMW E46 (330Ci, 2001)**, but K-line is not a BM
 | Area | State |
 |---|---|
 | App skeleton (GUI, event loop, timer) | ✅ working |
-| VS-sense (supply voltage over ADC) | ✅ working, calibrated to ±7 mV |
+| VS-sense (supply voltage over ADC) | ✅ working, calibrated to ±10 mV — the ADC quantisation floor |
 | Dual UART transport (K-line + K-bus) | ⬜ not started — no code yet. Approach validated on paper: both ports are exposed by `flipperzero::serial`, so no multiplexing hardware is needed |
 | Schematic | ✅ complete (KiCad) |
 | Hardware assembly | 🟨 assembled on a protoboard, not yet tested |
@@ -88,7 +88,11 @@ The long sampling time is **not optional**: the divider presents ~9.4 kΩ to the
 
 The four settings are exposed only as a whole named profile, never as independent knobs, because the calibration below is fitted against that exact combination.
 
-Calibration constants in [src/supply/calibration.rs](src/supply/calibration.rs) were fitted against a multimeter at 10 / 14 / 16 V and land within **±7 mV** across that range. They are tied to the ADC profile above — change `scale`, `oversample` or `sampling_time` and the calibration must be redone.
+Calibration constants in [src/supply/calibration.rs](src/supply/calibration.rs) were fitted on the assembled board at seven points from 4 to 16 V. Fit residuals are within ±5 mV, but against a fresh multimeter reading expect **±10 mV** — one ADC count is 9.86 mV at the VS node, so quantisation dominates. B+ carries a few mV more, and reads low below 10 V, because the drop across D1 follows current rather than being constant.
+
+Going finer is a hardware question, not a calibration one: 16 V only reaches 990 mV of the 2500 mV ADC scale, so a divider using more of the range would buy more than any refit.
+
+The constants are tied to the ADC profile above — change `scale`, `oversample` or `sampling_time` and the calibration must be redone.
 
 ---
 

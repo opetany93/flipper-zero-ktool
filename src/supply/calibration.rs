@@ -16,27 +16,40 @@ pub struct VsSenseCalibration {
 }
 
 impl VsSenseCalibration {
-    /// Fitted 2026-07-29 against a multimeter at 10 / 14 / 16 V.
+    /// Fitted 2026-08-19 on the assembled board, seven points from 4 to 16 V
+    /// off a bench supply.
     ///
     /// The divider is R3 150k over R4 10k, so the nominal ratio is
-    /// `(150k + 10k) / 10k = 16.0`. The fit came out as
-    /// `VS_true = 1.00531 * VS_read + 0.0779 V`: a small gain error from
-    /// resistor tolerance, plus a fixed offset from ADC offset and input
-    /// leakage across the ~9.4k source impedance. Residuals were
-    /// +4.3 / -6.9 / +4.6 mV.
+    /// `(150k + 10k) / 10k = 16.0`; the fitted 16.142 is +0.9%, inside the 1%
+    /// resistor tolerance. Against the raw code the fit is
+    /// `VS = 9.8585 * raw + 34.1 mV`, residuals between -5.1 and +3.5 mV. That
+    /// is the floor rather than a good result: one ADC count is 9.86 mV at the
+    /// VS node, so quantisation alone accounts for +/-4.9 mV. Against a fresh
+    /// multimeter reading expect about +/-10 mV, since the residual and the
+    /// quantisation of that particular sample both count.
     ///
-    /// D1 is a 1N5819 Schottky. Its measured drop is ~117 mV at this load
-    /// (111 / 115 / 125 mV over 10-16 V), far below the 300 mV datasheet
-    /// figure - that one applies at ~1 A, not at the ~15 mA this circuit draws.
+    /// D1 is a 1N5819 Schottky and its drop is **not** constant - it runs from
+    /// 150 mV at 4 V to 199 mV at 16 V, following current. 193 mV is the middle
+    /// of the 10-16 V operating range (186-199 mV), so B+ holds +/-7 mV there
+    /// and reads low below it. The earlier 117 mV was measured before the
+    /// transceivers were soldered on, when the board drew less.
+    ///
+    /// The gain was then checked by temporarily displaying VS in whole
+    /// millivolts: `pin_mv / raw` came out at 0.6102, implying 16.153 against
+    /// the fitted 16.142. That is 11 mV at 16 V, the same size as the
+    /// uncertainty of the check itself, so the seven-point fit was kept over
+    /// the two-point one. There is nothing left to trim without a finer ADC
+    /// step - 16 V only reaches 990 mV of the 2500 mV scale, so a divider that
+    /// used more of the range would help far more than any refit.
     ///
     /// These numbers are tied to
     /// [`SamplingConfig::HIGH_IMPEDANCE_2V5`](crate::hal::adc::SamplingConfig::HIGH_IMPEDANCE_2V5).
     /// Change the scale, the oversampling or the sample window and the fit has
     /// to be redone.
     pub const MEASURED: Self = Self {
-        gain: 16.085, // 16.0 nominal x 1.00531 measured
-        offset_mv: 78.0,
-        d1_forward_drop: Millivolts(117),
+        gain: 16.142,
+        offset_mv: 34.1,
+        d1_forward_drop: Millivolts(193),
     };
 
     /// Voltage at the VS node, from the voltage measured at the divider tap.
