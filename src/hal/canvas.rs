@@ -8,9 +8,9 @@ use flipperzero_sys as sys;
 /// The system fonts KTool draws with.
 #[derive(Clone, Copy, Debug)]
 pub enum Font {
-    /// Bold. Used for the title.
+    /// Bold.
     Primary,
-    /// Regular. Used for readouts.
+    /// Regular.
     Secondary,
 }
 
@@ -25,9 +25,8 @@ impl Font {
 
 /// A borrowed drawing surface, valid for the duration of one draw callback.
 ///
-/// The lifetime is the point: it is what stops a canvas from being stashed in a
-/// struct somewhere and used after the GUI service has moved on to the next
-/// frame.
+/// The lifetime is what stops a canvas from being stashed somewhere and used
+/// after the GUI service has moved on.
 pub struct Canvas<'a> {
     raw: *mut sys::Canvas,
     _frame: PhantomData<&'a mut sys::Canvas>,
@@ -47,14 +46,13 @@ impl Canvas<'_> {
         }
     }
 
-    /// Blanks the frame.
     pub fn clear(&mut self) {
         // SAFETY: `self.raw` is valid for the lifetime of `self`, per the
         // contract of `from_raw`. The same holds for the calls below.
         unsafe { sys::canvas_clear(self.raw) };
     }
 
-    /// Selects the font used by subsequent [`draw_str`](Self::draw_str) calls.
+    /// Selects the font for subsequent [`draw_str`](Self::draw_str) calls.
     pub fn set_font(&mut self, font: Font) {
         // SAFETY: see `clear`.
         unsafe { sys::canvas_set_font(self.raw, font.to_sys()) };
@@ -62,8 +60,7 @@ impl Canvas<'_> {
 
     /// Draws `text` with its left edge at `x` and its baseline at `y`.
     pub fn draw_str(&mut self, x: i32, y: i32, text: &CStr) {
-        // SAFETY: see `clear`. `text` is NUL-terminated by construction and
-        // outlives the call.
+        // SAFETY: see `clear`. `text` is NUL-terminated and outlives the call.
         unsafe { sys::canvas_draw_str(self.raw, x, y, text.as_ptr()) };
     }
 }
