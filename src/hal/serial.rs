@@ -184,6 +184,16 @@ impl<'a> SerialPort<'a> {
         self.start_receiving::<F>((on_data as *const F).cast_mut().cast());
     }
 
+    pub fn rx_buffer_size(&self) -> usize {
+        let rx_buffer = self.port.rx_buffer().load(Ordering::Acquire);
+
+        let Some(rx_buffer) = (unsafe { rx_buffer.as_ref() }) else {
+            return 0;
+        };
+
+        rx_buffer.bytes_available()
+    }
+
     fn start_receiving<F: Fn(Port)>(&self, on_data: *mut c_void) {
         // Stopping first is not optional. Starting installs an interrupt
         // handler, and `furi_hal_interrupt_set_isr_ex` aborts the app if one is

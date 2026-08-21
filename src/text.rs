@@ -31,6 +31,12 @@ impl<const N: usize> TextBuffer<N> {
 
         CStr::from_bytes_until_nul(&self.bytes).unwrap_or(c"")
     }
+
+    /// The text written so far, for the callers that want `&str` rather than a
+    /// C string.
+    pub fn as_str(&self) -> &str {
+        core::str::from_utf8(&self.bytes[..self.len]).unwrap_or("")
+    }
 }
 
 /// Formats into a [`TextBuffer`] and yields the result as a `&CStr`.
