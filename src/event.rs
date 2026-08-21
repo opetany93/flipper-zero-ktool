@@ -9,6 +9,7 @@ use crate::hal::input::InputEvent;
 pub enum Event {
     Input(InputEvent),
     Tick,
+    SerialData,
 }
 
 /// Comfortably more slots than events ever in flight, which is what lets
@@ -40,7 +41,9 @@ impl EventQueue {
     }
 
     /// Posts an event, dropping it if the queue is full. For the timer service
-    /// thread, where blocking would stall every timer in the system.
+    /// thread, where blocking would stall every timer in the system, and for
+    /// interrupt context, where `furi_message_queue_put` rejects any other
+    /// timeout outright.
     pub fn try_post(&self, event: Event) {
         let _ = self.queue.put(event, FuriDuration::ZERO);
     }

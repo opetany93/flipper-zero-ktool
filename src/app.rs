@@ -1,6 +1,7 @@
 //! The application thread: sampling, shutdown ordering, and the state the GUI
 //! thread reads.
 
+use flipperzero::error;
 use flipperzero::furi::sync::Mutex;
 use flipperzero::furi::time::FuriDuration;
 use flipperzero::info;
@@ -20,8 +21,8 @@ const SAMPLE_PERIOD_MS: u64 = 500;
 /// Runs KTool until the user presses Back.
 pub fn run(
     supply: &mut impl VoltageSource,
-    kline_serial_port: Option<SerialPort>,
-    kbus_serial_port: Option<SerialPort>,
+    kline_serial_port: Option<SerialPort<'_>>,
+    kbus_serial_port: Option<SerialPort<'_>>,
 ) {
     // The only two things other threads reach into. Sampling stays outside the
     // mutex: an ADC conversion is far too long to hold a lock the GUI thread
@@ -33,22 +34,31 @@ pub fn run(
     let sample = supply.read();
     *reading.lock() = sample;
 
-    let kline_serial_opened = kline_serial_port.is_some();
-    let kbus_serial_opened = kbus_serial_port.is_some();
+    // Runs in the receive interrupt, so it must only hand the loop a nudge and
+    // return. Reading the bytes is the loop's job.
+    let on_serial_data = || events_queue.try_post(Event::SerialData);
 
-    if let Some(serial_port) = &kline_serial_port {
-        serial_port.transmit(&[0x55]);
-    }
+    let Some(mut kline_serial_port) = kline_serial_port else {
+        error!("K-Line serial port not available");
+        return;
+    };
 
-    if let Some(serial_port) = &kbus_serial_port {
-        serial_port.transmit(&[0xAA]);
-    }
+    let Some(mut kbus_serial_port) = kbus_serial_port else {
+        error!("K-Bus serial port not available");
+        return;
+    };
+
+    kline_serial_port.set_on_data(&on_serial_data);
+    kbus_serial_port.set_on_data(&on_serial_data);
+
+    kline_serial_port.transmit(&[0x55]);
+    kbus_serial_port.transmit(&[0xAA]);
 
     let on_draw = |canvas: &mut Canvas<'_>| {
         // Snapshot and release: the lock is never held across drawing.
         let snapshot = *reading.lock();
 
-        ui::draw(canvas, &snapshot, kline_serial_opened, kbus_serial_opened);
+        ui::draw(canvas, &snapshot, true, true);
     };
     let on_input = |event: InputEvent| events_queue.post(Event::Input(event));
     let on_tick = || events_queue.try_post(Event::Tick);
@@ -71,21 +81,18 @@ pub fn run(
                 let sample = supply.read();
                 *reading.lock() = sample;
 
-                log_received("K-Line", kline_serial_port.as_ref());
-                log_received("K-Bus", kbus_serial_port.as_ref());
-
                 view_port.request_redraw();
+            }
+            Event::SerialData => {
+                log_received("K-Line", &kline_serial_port);
+                log_received("K-Bus", &kbus_serial_port);
             }
         }
     }
 }
 
 /// Scaffolding for the echo test, until there is a screen to show bytes on.
-fn log_received(bus: &str, serial_port: Option<&SerialPort>) {
-    let Some(serial_port) = serial_port else {
-        return;
-    };
-
+fn log_received(bus: &str, serial_port: &SerialPort<'_>) {
     let mut received = [0u8; 16];
     let count = serial_port.read(&mut received);
     if 0 == count {

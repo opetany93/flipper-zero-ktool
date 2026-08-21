@@ -5,6 +5,7 @@
 //! a receive path that works on both ports at once.
 
 use core::ffi::c_void;
+use core::marker::PhantomData;
 use core::num::NonZeroUsize;
 use core::ptr;
 use core::sync::atomic::{AtomicPtr, Ordering};
@@ -58,10 +59,10 @@ impl Port {
         }
     }
 
-    fn rx_callback(self) -> sys::FuriHalSerialAsyncRxCallback {
+    fn rx_callback<F: Fn()>(self) -> sys::FuriHalSerialAsyncRxCallback {
         match self {
-            Self::Usart => Some(usart_rx),
-            Self::Lpuart => Some(lpuart_rx),
+            Self::Usart => Some(usart_rx::<F>),
+            Self::Lpuart => Some(lpuart_rx::<F>),
         }
     }
 }
@@ -104,9 +105,14 @@ impl Framing {
     }
 }
 
-pub struct SerialPort {
+/// An open port, receiving into a buffer that [`read`](Self::read) drains.
+///
+/// The lifetime is the notifier's: holding its borrow is what guarantees the
+/// interrupt is detached before the closure can go away.
+pub struct SerialPort<'a> {
     handle: SerialHandle,
     port: Port,
+    _on_data: PhantomData<&'a ()>,
 }
 
 /// The port is already taken, by the log device or by the Expansion Modules
@@ -115,7 +121,7 @@ pub struct SerialPort {
 #[derive(Debug)]
 pub struct PortBusy;
 
-impl SerialPort {
+impl<'a> SerialPort<'a> {
     /// Acquires `port`, brings it up at `baud`, applies `framing` and starts
     /// receiving.
     ///
@@ -145,16 +151,15 @@ impl SerialPort {
         )));
         port.rx_buffer().store(rx_buffer, Ordering::Release);
 
-        // SAFETY: the handle is valid, and the callback finds its buffer
-        // through the static published above rather than through `context`.
-        unsafe {
-            sys::furi_hal_serial_async_rx_start(
-                handle.as_ptr(),
-                port.rx_callback(),
-                ptr::null_mut(),
-                true,
-            );
-        }
+        let serial_port = Self {
+            handle,
+            port,
+            _on_data: PhantomData,
+        };
+
+        // No notifier yet, so any type satisfies the callback: the null context
+        // is what tells it there is nobody to wake.
+        serial_port.start_receiving::<fn()>(ptr::null_mut());
 
         info!(
             "Serial port {} opened at {} baud, framing {}",
@@ -163,7 +168,39 @@ impl SerialPort {
             framing.name()
         );
 
-        Ok(Self { handle, port })
+        Ok(serial_port)
+    }
+
+    /// Calls `on_data` from interrupt context once bytes have landed in the
+    /// buffer, so a loop waiting on a queue can be woken instead of polling.
+    ///
+    /// `on_data` runs inside the interrupt, hence `Sync`, and must neither
+    /// block nor allocate.
+    pub fn set_on_data<F>(&mut self, on_data: &'a F)
+    where
+        F: Fn() + Sync,
+    {
+        self.start_receiving::<F>((on_data as *const F).cast_mut().cast());
+    }
+
+    fn start_receiving<F: Fn()>(&self, on_data: *mut c_void) {
+        // Stopping first is not optional. Starting installs an interrupt
+        // handler, and `furi_hal_interrupt_set_isr_ex` aborts the app if one is
+        // already in place, so registering a notifier over a running receiver
+        // would take the whole Flipper down.
+        //
+        // SAFETY: the handle is valid for as long as `self` is, the callback
+        // finds its buffer through a static rather than through `context`, and
+        // `on_data` is either null or a `&F` borrowed for `'a`.
+        unsafe {
+            sys::furi_hal_serial_async_rx_stop(self.handle.as_ptr());
+            sys::furi_hal_serial_async_rx_start(
+                self.handle.as_ptr(),
+                self.port.rx_callback::<F>(),
+                on_data,
+                true,
+            );
+        }
     }
 
     /// Moves whatever the interrupt has buffered into `buffer` and returns how
@@ -186,7 +223,7 @@ impl SerialPort {
     }
 }
 
-impl Drop for SerialPort {
+impl Drop for SerialPort<'_> {
     fn drop(&mut self) {
         // SAFETY: `Drop` runs before the fields are dropped, so the handle is
         // still live. This call is also what makes the free below sound: it
@@ -213,22 +250,22 @@ impl Drop for SerialPort {
 // callback pointer. Each body names a different static, which is what keeps
 // the linker from folding them into one symbol.
 
-unsafe extern "C" fn usart_rx(
+unsafe extern "C" fn usart_rx<F: Fn()>(
     handle: *mut sys::FuriHalSerialHandle,
     event: sys::FuriHalSerialRxEvent,
-    _context: *mut c_void,
+    on_data: *mut c_void,
 ) {
     // SAFETY: forwarding the arguments the interrupt handed us.
-    unsafe { buffer_received_bytes(&USART_RX_BUFFER, handle, event) };
+    unsafe { buffer_received_bytes::<F>(&USART_RX_BUFFER, handle, event, on_data) };
 }
 
-unsafe extern "C" fn lpuart_rx(
+unsafe extern "C" fn lpuart_rx<F: Fn()>(
     handle: *mut sys::FuriHalSerialHandle,
     event: sys::FuriHalSerialRxEvent,
-    _context: *mut c_void,
+    on_data: *mut c_void,
 ) {
     // SAFETY: forwarding the arguments the interrupt handed us.
-    unsafe { buffer_received_bytes(&LPUART_RX_BUFFER, handle, event) };
+    unsafe { buffer_received_bytes::<F>(&LPUART_RX_BUFFER, handle, event, on_data) };
 }
 
 /// Runs in interrupt context: no allocation, no blocking, no logging.
@@ -238,10 +275,11 @@ unsafe extern "C" fn lpuart_rx(
 /// `handle` must be the one the calling callback was registered with, and this
 /// must be called from that callback: the two `async_rx` functions are only
 /// valid there.
-unsafe fn buffer_received_bytes(
+unsafe fn buffer_received_bytes<F: Fn()>(
     rx_buffer: &AtomicPtr<StreamBuffer>,
     handle: *mut sys::FuriHalSerialHandle,
     event: sys::FuriHalSerialRxEvent,
+    on_data: *mut c_void,
 ) {
     // `report_errors` is on, so framing, parity, noise and overrun arrive here
     // too, as a bitmask that can carry several of them at once.
@@ -257,12 +295,25 @@ unsafe fn buffer_received_bytes(
         return;
     };
 
+    let mut buffered = 0;
+
     // SAFETY: called from the callback, with that callback's handle.
     while unsafe { sys::furi_hal_serial_async_rx_available(handle) } {
         let byte = unsafe { sys::furi_hal_serial_async_rx(handle) };
 
         // SAFETY: the only writer, and it does not block: a full buffer drops
         // the byte rather than stalling the interrupt.
-        unsafe { rx_buffer.send(&[byte], FuriDuration::ZERO) };
+        buffered += unsafe { rx_buffer.send(&[byte], FuriDuration::ZERO) };
     }
+
+    if 0 == buffered || on_data.is_null() {
+        return;
+    }
+
+    // SAFETY: `on_data` is the `&F` handed to `with_on_data`, kept borrowed for
+    // as long as the port lives, and the port stops this interrupt before it
+    // gives the borrow back.
+    let on_data: &F = unsafe { &*on_data.cast() };
+
+    on_data();
 }
