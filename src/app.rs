@@ -3,6 +3,7 @@
 
 use flipperzero::furi::sync::Mutex;
 use flipperzero::furi::time::FuriDuration;
+use flipperzero::info;
 
 use crate::event::{Event, EventQueue};
 use crate::hal::canvas::Canvas;
@@ -35,6 +36,14 @@ pub fn run(
     let kline_serial_opened = kline_serial_port.is_some();
     let kbus_serial_opened = kbus_serial_port.is_some();
 
+    if let Some(serial_port) = &kline_serial_port {
+        serial_port.transmit(&[0x55]);
+    }
+
+    if let Some(serial_port) = &kbus_serial_port {
+        serial_port.transmit(&[0xAA]);
+    }
+
     let on_draw = |canvas: &mut Canvas<'_>| {
         // Snapshot and release: the lock is never held across drawing.
         let snapshot = *reading.lock();
@@ -62,8 +71,29 @@ pub fn run(
                 let sample = supply.read();
                 *reading.lock() = sample;
 
+                log_received("K-Line", kline_serial_port.as_ref());
+                log_received("K-Bus", kbus_serial_port.as_ref());
+
                 view_port.request_redraw();
             }
         }
     }
+}
+
+/// Scaffolding for the echo test, until there is a screen to show bytes on.
+fn log_received(bus: &str, serial_port: Option<&SerialPort>) {
+    let Some(serial_port) = serial_port else {
+        return;
+    };
+
+    let mut received = [0u8; 16];
+    let count = serial_port.read(&mut received);
+    if 0 == count {
+        return;
+    }
+
+    info!(
+        "{} received {} bytes, first 0x{:X}",
+        bus, count, received[0]
+    );
 }

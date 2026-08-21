@@ -17,6 +17,8 @@ extern crate flipperzero_rt;
 // Provides the `#[global_allocator]` backed by the Furi heap.
 extern crate flipperzero_alloc;
 
+extern crate alloc;
+
 mod app;
 mod event;
 mod hal;

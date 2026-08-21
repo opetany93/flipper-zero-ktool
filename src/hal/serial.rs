@@ -1,19 +1,69 @@
 //! Serial ports.
 //!
 //! `SerialHandle` from the `flipperzero` crate already covers acquiring,
-//! configuring and transmitting. The one thing it does not expose is the frame
-//! format, and that is what this module adds.
+//! configuring and transmitting. What this module adds is the frame format and
+//! a receive path that works on both ports at once.
 
+use core::ffi::c_void;
+use core::num::NonZeroUsize;
+use core::ptr;
+use core::sync::atomic::{AtomicPtr, Ordering};
+
+use alloc::boxed::Box;
+use flipperzero::furi::stream_buffer::StreamBuffer;
+use flipperzero::furi::time::FuriDuration;
+use flipperzero::info;
 use flipperzero::serial;
 use flipperzero::serial::SerialHandle;
 use flipperzero_sys as sys;
 
+/// How much the interrupt may buffer before [`SerialPort::read`] collects it.
+/// At 10400 baud that is a quarter of a second of solid traffic.
+const RX_BUFFER_CAPACITY: NonZeroUsize = NonZeroUsize::new(256).unwrap();
+
+/// Hand a byte on as soon as it lands. Nothing here blocks on the buffer, so
+/// anything higher would only add latency.
+const RX_TRIGGER_LEVEL: usize = 1;
+
+static USART_RX_BUFFER: AtomicPtr<StreamBuffer> = AtomicPtr::new(ptr::null_mut());
+static LPUART_RX_BUFFER: AtomicPtr<StreamBuffer> = AtomicPtr::new(ptr::null_mut());
+
 /// The two serial peripherals broken out on the GPIO header: USART1 on pins
 /// 13/14, LPUART1 on 15/16.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub enum Port {
     Usart,
     Lpuart,
+}
+
+impl Port {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Usart => "USART1",
+            Self::Lpuart => "LPUART1",
+        }
+    }
+
+    fn id(self) -> serial::SerialId {
+        match self {
+            Self::Usart => serial::USART,
+            Self::Lpuart => serial::LPUART,
+        }
+    }
+
+    fn rx_buffer(self) -> &'static AtomicPtr<StreamBuffer> {
+        match self {
+            Self::Usart => &USART_RX_BUFFER,
+            Self::Lpuart => &LPUART_RX_BUFFER,
+        }
+    }
+
+    fn rx_callback(self) -> sys::FuriHalSerialAsyncRxCallback {
+        match self {
+            Self::Usart => Some(usart_rx),
+            Self::Lpuart => Some(lpuart_rx),
+        }
+    }
 }
 
 /// The shape of one character on the wire: data bits, parity, stop bits.
@@ -21,7 +71,7 @@ pub enum Port {
 /// Whole named profiles rather than three separate knobs, which keeps the `sys`
 /// enums inside `hal` and makes a call site read as one decision instead of
 /// three.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Framing {
     data_bits: sys::FuriHalSerialDataBits,
     parity: sys::FuriHalSerialParity,
@@ -44,10 +94,19 @@ impl Framing {
         parity: sys::FuriHalSerialParityEven,
         ..Self::EIGHT_N1
     };
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::EIGHT_N1 => "8N1",
+            Self::EIGHT_E1 => "8E1",
+            _ => "unknown framing",
+        }
+    }
 }
 
 pub struct SerialPort {
     handle: SerialHandle,
+    port: Port,
 }
 
 /// The port is already taken, by the log device or by the Expansion Modules
@@ -57,17 +116,13 @@ pub struct SerialPort {
 pub struct PortBusy;
 
 impl SerialPort {
-    /// Acquires `port`, brings it up at `baud` and applies `framing`.
+    /// Acquires `port`, brings it up at `baud`, applies `framing` and starts
+    /// receiving.
     ///
     /// The order is not free to change: `init` configures the peripheral with
     /// 8N1, so framing has to be applied after it rather than before.
     pub fn open(port: Port, baud: u32, framing: Framing) -> Result<Self, PortBusy> {
-        let id = match port {
-            Port::Usart => serial::USART,
-            Port::Lpuart => serial::LPUART,
-        };
-
-        let handle = SerialHandle::acquire(id).map_err(|_| PortBusy)?;
+        let handle = SerialHandle::acquire(port.id()).map_err(|_| PortBusy)?;
 
         handle.init(baud);
 
@@ -83,10 +138,131 @@ impl SerialPort {
             );
         }
 
-        Ok(Self { handle })
+        // Ownership moves to the static below, and comes back in `drop`.
+        let rx_buffer = Box::into_raw(Box::new(StreamBuffer::new(
+            RX_BUFFER_CAPACITY,
+            RX_TRIGGER_LEVEL,
+        )));
+        port.rx_buffer().store(rx_buffer, Ordering::Release);
+
+        // SAFETY: the handle is valid, and the callback finds its buffer
+        // through the static published above rather than through `context`.
+        unsafe {
+            sys::furi_hal_serial_async_rx_start(
+                handle.as_ptr(),
+                port.rx_callback(),
+                ptr::null_mut(),
+                true,
+            );
+        }
+
+        info!(
+            "Serial port {} opened at {} baud, framing {}",
+            port.name(),
+            baud,
+            framing.name()
+        );
+
+        Ok(Self { handle, port })
     }
 
-    // pub fn write(&mut self, data: &[u8]) {}
+    /// Moves whatever the interrupt has buffered into `buffer` and returns how
+    /// many bytes that was. Never blocks.
+    pub fn read(&self, buffer: &mut [u8]) -> usize {
+        let rx_buffer = self.port.rx_buffer().load(Ordering::Acquire);
 
-    // pub fn read(&mut self, buffer: &mut [u8]) -> usize {}
+        // SAFETY: only `drop` clears the slot, and `&self` says it has not run.
+        let Some(rx_buffer) = (unsafe { rx_buffer.as_ref() }) else {
+            return 0;
+        };
+
+        // SAFETY: a stream buffer takes one reader, and this is the only one:
+        // nothing else in the crate receives from the port's buffer.
+        unsafe { rx_buffer.receive(buffer, FuriDuration::ZERO) }
+    }
+
+    pub fn transmit(&self, data: &[u8]) {
+        self.handle.tx(data);
+    }
+}
+
+impl Drop for SerialPort {
+    fn drop(&mut self) {
+        // SAFETY: `Drop` runs before the fields are dropped, so the handle is
+        // still live. This call is also what makes the free below sound: it
+        // clears the callback, after which the interrupt cannot reach the
+        // buffer again.
+        unsafe { sys::furi_hal_serial_async_rx_stop(self.handle.as_ptr()) };
+
+        let rx_buffer = self
+            .port
+            .rx_buffer()
+            .swap(ptr::null_mut(), Ordering::AcqRel);
+
+        // SAFETY: non-null, because a `SerialPort` exists only once `open` has
+        // stored it, and `drop` is the only thing that takes it back out. It
+        // came from `Box::into_raw`, the swap put it out of reach of a later
+        // `read`, and the interrupt that shared it is stopped.
+        drop(unsafe { Box::from_raw(rx_buffer) });
+    }
+}
+
+// The two callbacks below must end up at different addresses, or
+// `furi_hal_serial_async_rx_start` aborts the app on its second call:
+// targets/f7/furi_hal/furi_hal_serial.c:868 rejects two ports sharing a
+// callback pointer. Each body names a different static, which is what keeps
+// the linker from folding them into one symbol.
+
+unsafe extern "C" fn usart_rx(
+    handle: *mut sys::FuriHalSerialHandle,
+    event: sys::FuriHalSerialRxEvent,
+    _context: *mut c_void,
+) {
+    // SAFETY: forwarding the arguments the interrupt handed us.
+    unsafe { buffer_received_bytes(&USART_RX_BUFFER, handle, event) };
+}
+
+unsafe extern "C" fn lpuart_rx(
+    handle: *mut sys::FuriHalSerialHandle,
+    event: sys::FuriHalSerialRxEvent,
+    _context: *mut c_void,
+) {
+    // SAFETY: forwarding the arguments the interrupt handed us.
+    unsafe { buffer_received_bytes(&LPUART_RX_BUFFER, handle, event) };
+}
+
+/// Runs in interrupt context: no allocation, no blocking, no logging.
+///
+/// # Safety
+///
+/// `handle` must be the one the calling callback was registered with, and this
+/// must be called from that callback: the two `async_rx` functions are only
+/// valid there.
+unsafe fn buffer_received_bytes(
+    rx_buffer: &AtomicPtr<StreamBuffer>,
+    handle: *mut sys::FuriHalSerialHandle,
+    event: sys::FuriHalSerialRxEvent,
+) {
+    // `report_errors` is on, so framing, parity, noise and overrun arrive here
+    // too, as a bitmask that can carry several of them at once.
+    if 0 == event.0 & sys::FuriHalSerialRxEventData.0 {
+        return;
+    }
+
+    let rx_buffer = rx_buffer.load(Ordering::Acquire);
+
+    // SAFETY: the pointer comes from a leaked `Box`, published before the
+    // interrupt was enabled, and is never cleared.
+    let Some(rx_buffer) = (unsafe { rx_buffer.as_ref() }) else {
+        return;
+    };
+
+    // SAFETY: called from the callback, with that callback's handle.
+    while unsafe { sys::furi_hal_serial_async_rx_available(handle) } {
+        let byte = unsafe { sys::furi_hal_serial_async_rx(handle) };
+
+        // SAFETY: the only writer, and it does not block: a full buffer drops
+        // the byte rather than stalling the interrupt.
+        unsafe { rx_buffer.send(&[byte], FuriDuration::ZERO) };
+    }
 }
