@@ -31,7 +31,7 @@ static LPUART_RX_BUFFER: AtomicPtr<StreamBuffer> = AtomicPtr::new(ptr::null_mut(
 
 /// The two serial peripherals broken out on the GPIO header: USART1 on pins
 /// 13/14, LPUART1 on 15/16.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Port {
     Usart,
     Lpuart,
@@ -59,7 +59,7 @@ impl Port {
         }
     }
 
-    fn rx_callback<F: Fn()>(self) -> sys::FuriHalSerialAsyncRxCallback {
+    fn rx_callback<F: Fn(Port)>(self) -> sys::FuriHalSerialAsyncRxCallback {
         match self {
             Self::Usart => Some(usart_rx::<F>),
             Self::Lpuart => Some(lpuart_rx::<F>),
@@ -159,7 +159,7 @@ impl<'a> SerialPort<'a> {
 
         // No notifier yet, so any type satisfies the callback: the null context
         // is what tells it there is nobody to wake.
-        serial_port.start_receiving::<fn()>(ptr::null_mut());
+        serial_port.start_receiving::<fn(Port)>(ptr::null_mut());
 
         info!(
             "Serial port {} opened at {} baud, framing {}",
@@ -173,17 +173,18 @@ impl<'a> SerialPort<'a> {
 
     /// Calls `on_data` from interrupt context once bytes have landed in the
     /// buffer, so a loop waiting on a queue can be woken instead of polling.
+    /// The argument is this port, which lets one closure serve both.
     ///
     /// `on_data` runs inside the interrupt, hence `Sync`, and must neither
     /// block nor allocate.
     pub fn set_on_data<F>(&mut self, on_data: &'a F)
     where
-        F: Fn() + Sync,
+        F: Fn(Port) + Sync,
     {
         self.start_receiving::<F>((on_data as *const F).cast_mut().cast());
     }
 
-    fn start_receiving<F: Fn()>(&self, on_data: *mut c_void) {
+    fn start_receiving<F: Fn(Port)>(&self, on_data: *mut c_void) {
         // Stopping first is not optional. Starting installs an interrupt
         // handler, and `furi_hal_interrupt_set_isr_ex` aborts the app if one is
         // already in place, so registering a notifier over a running receiver
@@ -247,25 +248,25 @@ impl Drop for SerialPort<'_> {
 // The two callbacks below must end up at different addresses, or
 // `furi_hal_serial_async_rx_start` aborts the app on its second call:
 // targets/f7/furi_hal/furi_hal_serial.c:868 rejects two ports sharing a
-// callback pointer. Each body names a different static, which is what keeps
+// callback pointer. Each body passes a different `Port`, which is what keeps
 // the linker from folding them into one symbol.
 
-unsafe extern "C" fn usart_rx<F: Fn()>(
+unsafe extern "C" fn usart_rx<F: Fn(Port)>(
     handle: *mut sys::FuriHalSerialHandle,
     event: sys::FuriHalSerialRxEvent,
     on_data: *mut c_void,
 ) {
     // SAFETY: forwarding the arguments the interrupt handed us.
-    unsafe { buffer_received_bytes::<F>(&USART_RX_BUFFER, handle, event, on_data) };
+    unsafe { buffer_received_bytes::<F>(Port::Usart, handle, event, on_data) };
 }
 
-unsafe extern "C" fn lpuart_rx<F: Fn()>(
+unsafe extern "C" fn lpuart_rx<F: Fn(Port)>(
     handle: *mut sys::FuriHalSerialHandle,
     event: sys::FuriHalSerialRxEvent,
     on_data: *mut c_void,
 ) {
     // SAFETY: forwarding the arguments the interrupt handed us.
-    unsafe { buffer_received_bytes::<F>(&LPUART_RX_BUFFER, handle, event, on_data) };
+    unsafe { buffer_received_bytes::<F>(Port::Lpuart, handle, event, on_data) };
 }
 
 /// Runs in interrupt context: no allocation, no blocking, no logging.
@@ -275,8 +276,8 @@ unsafe extern "C" fn lpuart_rx<F: Fn()>(
 /// `handle` must be the one the calling callback was registered with, and this
 /// must be called from that callback: the two `async_rx` functions are only
 /// valid there.
-unsafe fn buffer_received_bytes<F: Fn()>(
-    rx_buffer: &AtomicPtr<StreamBuffer>,
+unsafe fn buffer_received_bytes<F: Fn(Port)>(
+    port: Port,
     handle: *mut sys::FuriHalSerialHandle,
     event: sys::FuriHalSerialRxEvent,
     on_data: *mut c_void,
@@ -287,7 +288,7 @@ unsafe fn buffer_received_bytes<F: Fn()>(
         return;
     }
 
-    let rx_buffer = rx_buffer.load(Ordering::Acquire);
+    let rx_buffer = port.rx_buffer().load(Ordering::Acquire);
 
     // SAFETY: the pointer comes from a leaked `Box`, published before the
     // interrupt was enabled, and is never cleared.
@@ -310,10 +311,10 @@ unsafe fn buffer_received_bytes<F: Fn()>(
         return;
     }
 
-    // SAFETY: `on_data` is the `&F` handed to `with_on_data`, kept borrowed for
+    // SAFETY: `on_data` is the `&F` handed to `set_on_data`, kept borrowed for
     // as long as the port lives, and the port stops this interrupt before it
     // gives the borrow back.
     let on_data: &F = unsafe { &*on_data.cast() };
 
-    on_data();
+    on_data(port);
 }

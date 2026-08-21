@@ -9,7 +9,7 @@ use flipperzero::info;
 use crate::event::{Event, EventQueue};
 use crate::hal::canvas::Canvas;
 use crate::hal::input::{InputEvent, Key, Press};
-use crate::hal::serial::SerialPort;
+use crate::hal::serial::{Port, SerialPort};
 use crate::hal::timer::PeriodicTimer;
 use crate::hal::view_port::ViewPort;
 use crate::supply::{Reading, VoltageSource};
@@ -36,7 +36,7 @@ pub fn run(
 
     // Runs in the receive interrupt, so it must only hand the loop a nudge and
     // return. Reading the bytes is the loop's job.
-    let on_serial_data = || events_queue.try_post(Event::SerialData);
+    let on_serial_data = |port| events_queue.try_post(Event::SerialData(port));
 
     let Some(mut kline_serial_port) = kline_serial_port else {
         error!("K-Line serial port not available");
@@ -83,10 +83,8 @@ pub fn run(
 
                 view_port.request_redraw();
             }
-            Event::SerialData => {
-                log_received("K-Line", &kline_serial_port);
-                log_received("K-Bus", &kbus_serial_port);
-            }
+            Event::SerialData(Port::Usart) => log_received("K-Line", &kline_serial_port),
+            Event::SerialData(Port::Lpuart) => log_received("K-Bus", &kbus_serial_port),
         }
     }
 }

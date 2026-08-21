@@ -4,12 +4,13 @@ use flipperzero::furi::message_queue::MessageQueue;
 use flipperzero::furi::time::FuriDuration;
 
 use crate::hal::input::InputEvent;
+use crate::hal::serial::Port;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Event {
     Input(InputEvent),
     Tick,
-    SerialData,
+    SerialData(Port),
 }
 
 /// Comfortably more slots than events ever in flight, which is what lets
